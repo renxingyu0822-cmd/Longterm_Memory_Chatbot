@@ -23,5 +23,3 @@
 **Next steps:**
 - Decide on LLM backend and vector DB
 - Start scaffolding the core pipeline
-
-test test
