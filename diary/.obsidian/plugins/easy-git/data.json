@@ -1,0 +1,180 @@
+{
+  "auth": {
+    "method": "pat",
+    "token": "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",
+    "provider": "github",
+    "username": "renxingyu0822-cmd"
+  },
+  "mappings": [
+    {
+      "id": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "name": "Longterm Memory Chatbot",
+      "vaultFolder": "/",
+      "direction": "both",
+      "autoMode": {
+        "kind": "onSave",
+        "debounceMs": 10000
+      },
+      "rewriteWikilinks": true,
+      "destinations": [
+        {
+          "id": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+          "repoOwner": "renxingyu0822-cmd",
+          "repoName": "Longterm_Memory_Chatbot",
+          "branch": "main",
+          "remoteFolder": "",
+          "lastSyncState": {
+            "baseCommitSha": "7151f1de3e902bdf0189d3b0db6308b0032d8f5e",
+            "baseTreeSha": "743f9fa0b955ec90f4a0dc10c35fbf3587ba71f2",
+            "files": {
+              "IMMFlight.md": {
+                "sha": "4131d49960498b3527065531902b887c771b10ab",
+                "size": 150,
+                "mtime": 1784109714595
+              },
+              "dafei.md": {
+                "sha": "dfe07138e279e304db69dae26a8f0a8edf6f5128",
+                "size": 582,
+                "mtime": 1784109713374
+              },
+              "shared.md": {
+                "sha": "e5d19a2b8414b8c92ecc7c0271e28055fa144c95",
+                "size": 382,
+                "mtime": 1784109716744
+              },
+              ".gitignore": {
+                "sha": "112ec42d4475862db0ac257766d5fbbfb9438a5d",
+                "size": 118
+              },
+              "Long-Term_Memory_Agent_Project_Summary.docx": {
+                "sha": "a0186d26b820eb2680394d3ea5640dc1489a1324",
+                "size": 38130
+              },
+              "README.md": {
+                "sha": "ae760d2ce3e69b8afa7f75897b8246addfec6471",
+                "size": 1123
+              },
+              "diary/IMMFlight.md": {
+                "sha": "4131d49960498b3527065531902b887c771b10ab",
+                "size": 150
+              },
+              "diary/dafei.md": {
+                "sha": "057f2e25921c24277c1e250876f6b1643e7307e9",
+                "size": 581,
+                "mtime": 1784111014120
+              },
+              "diary/shared.md": {
+                "sha": "e5d19a2b8414b8c92ecc7c0271e28055fa144c95",
+                "size": 382
+              },
+              "notes/.gitkeep": {
+                "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+                "size": 0
+              }
+            }
+          },
+          "lastSyncAt": 1784111026671
+        }
+      ]
+    }
+  ],
+  "defaultCommitTemplate": "Sync from Obsidian ({mapping}): {datetime} — {added}+ {modified}~ {deleted}-",
+  "excludedPaths": [
+    ".trash/**",
+    ".git/**",
+    "node_modules/**",
+    ".easy-git-backup/**",
+    ".claude/**",
+    ".DS_Store",
+    "Thumbs.db",
+    "*.tmp",
+    "*.swp",
+    ".obsidian/**"
+  ],
+  "maxFileSizeBytes": 99614720,
+  "showNotifications": true,
+  "debugLogging": false,
+  "autoResolveByMtime": true,
+  "autoMergeText": true,
+  "syncLog": [
+    {
+      "timestamp": 1784111026705,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "on-save",
+      "ok": true,
+      "added": 0,
+      "modified": 1,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 1,
+      "changedPaths": [
+        "diary/dafei.md"
+      ],
+      "durationMs": 2474
+    },
+    {
+      "timestamp": 1784110937489,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "on-save",
+      "ok": true,
+      "added": 0,
+      "modified": 1,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 1,
+      "changedPaths": [
+        "diary/dafei.md"
+      ],
+      "durationMs": 2270
+    },
+    {
+      "timestamp": 1784110810081,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "on-save",
+      "ok": true,
+      "added": 0,
+      "modified": 0,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 0,
+      "changedPaths": [],
+      "durationMs": 653
+    },
+    {
+      "timestamp": 1784110801926,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "manual",
+      "ok": true,
+      "added": 10,
+      "modified": 0,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 10,
+      "changedPaths": [
+        "IMMFlight.md",
+        "dafei.md",
+        "shared.md",
+        ".gitignore",
+        "Long-Term_Memory_Agent_Project_Summary.docx",
+        "README.md",
+        "diary/IMMFlight.md",
+        "diary/dafei.md",
+        "diary/shared.md",
+        "notes/.gitkeep"
+      ],
+      "durationMs": 4554
+    }
+  ]
+}

@@ -9,7 +9,8 @@ A conversational AI agent with long-term memory that continuously learns from us
 │   ├── dafei.md
 │   ├── IMMFlight.md
 │   └── shared.md
-└── src/            # Source code
+├── notes/          # Shared project notes
+└── src/            # Source code (coming soon)
 ```
 
 ## Diary Setup (Obsidian)
