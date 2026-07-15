@@ -24,8 +24,8 @@
           "branch": "main",
           "remoteFolder": "",
           "lastSyncState": {
-            "baseCommitSha": "7151f1de3e902bdf0189d3b0db6308b0032d8f5e",
-            "baseTreeSha": "743f9fa0b955ec90f4a0dc10c35fbf3587ba71f2",
+            "baseCommitSha": "f5fdc152126de34831e05e47c711c3a956f5a62a",
+            "baseTreeSha": "d9400253f66195115f5112b41c2bdfef6fa87b63",
             "files": {
               "IMMFlight.md": {
                 "sha": "4131d49960498b3527065531902b887c771b10ab",
@@ -33,9 +33,9 @@
                 "mtime": 1784109714595
               },
               "dafei.md": {
-                "sha": "dfe07138e279e304db69dae26a8f0a8edf6f5128",
-                "size": 582,
-                "mtime": 1784109713374
+                "sha": "057f2e25921c24277c1e250876f6b1643e7307e9",
+                "size": 581,
+                "mtime": 1784111419593
               },
               "shared.md": {
                 "sha": "e5d19a2b8414b8c92ecc7c0271e28055fa144c95",
@@ -73,7 +73,7 @@
               }
             }
           },
-          "lastSyncAt": 1784111026671
+          "lastSyncAt": 1784111432799
         }
       ]
     }
@@ -97,6 +97,56 @@
   "autoResolveByMtime": true,
   "autoMergeText": true,
   "syncLog": [
+    {
+      "timestamp": 1784111976412,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "on-save",
+      "ok": false,
+      "added": 0,
+      "modified": 0,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 0,
+      "error": "Bad credentials (GET https://api.github.com/repos/renxingyu0822-cmd/Longterm_Memory_Chatbot/branches/main)",
+      "durationMs": 172
+    },
+    {
+      "timestamp": 1784111793689,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "on-save",
+      "ok": false,
+      "added": 0,
+      "modified": 0,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 0,
+      "error": "Bad credentials (GET https://api.github.com/repos/renxingyu0822-cmd/Longterm_Memory_Chatbot/branches/main)",
+      "durationMs": 448
+    },
+    {
+      "timestamp": 1784111432803,
+      "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
+      "mappingName": "Longterm Memory Chatbot",
+      "destinationId": "e9907f6a-7b4f-4a47-8a13-c638f952ef94",
+      "destinationLabel": "renxingyu0822-cmd/Longterm_Memory_Chatbot:main//",
+      "trigger": "on-save",
+      "ok": true,
+      "added": 0,
+      "modified": 1,
+      "deleted": 0,
+      "conflicts": 0,
+      "filesTouched": 1,
+      "changedPaths": [
+        "dafei.md"
+      ],
+      "durationMs": 2600
+    },
     {
       "timestamp": 1784111026705,
       "mappingId": "8feb9f51-e6cf-43f3-8b29-d979214d58ed",
