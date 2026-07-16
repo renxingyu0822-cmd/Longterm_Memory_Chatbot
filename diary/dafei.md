@@ -14,33 +14,30 @@
 
 **Decisions made:**
 - Use GitHub repo for collaboration
-- Obsidian Git plugin for diary sync
-- Dual storage: vector DB + relational DB
+- Set up project folder structure: `diary/` for diary, `src/` for code
 
 **Blockers / questions:**
-- Tech stack not finalized yet (LLM, vector DB choice)
+- Tech stack not finalized yet
 
 **Next steps:**
-- Decide on LLM backend and vector DB
-- Start scaffolding the core pipeline
+- Decide on LLM backend
+- Start building the web UI
 
 ---
 
 ## 2026-07-16
-**What I worked on:** Built the core pipeline and web UI for the chatbot.
+**What I worked on:** Connected GPT-4o-mini to a Flask web app with a chat UI.
 
 **Decisions made:**
 - LLM: GPT-4o-mini
-- Vector DB: ChromaDB (local)
 - Language: Python
-- Web UI: Flask + browser (localhost:8080)
+- Web framework: Flask
 
 **How to start the chatbot:**
 1. Open terminal
-2. Type `chatbot` (alias set up in ~/.zshrc)
+2. Type `chatbot`
 3. Open http://localhost:8080 in browser
 4. Close terminal when done
 
 **Next steps:**
-- Add memory importance scoring
-- Add forgetting mechanism (time decay) 
+- Build the full memory system following the 8-component architecture
