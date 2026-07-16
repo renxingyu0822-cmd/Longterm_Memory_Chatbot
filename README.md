@@ -2,10 +2,14 @@
 
 A conversational AI agent with long-term memory that continuously learns from user interactions, stores knowledge, and retrieves relevant memories to generate personalized, context-aware responses over time.
 
+## Current Status
+
+Phase 1 complete: LLM connected to a web chat UI.
+Memory system (SQL + vector DB + scoring + forgetting) to be built next.
+
 ## Tech Stack
 
 - **LLM:** GPT-4o-mini (OpenAI)
-- **Vector DB:** ChromaDB (local, persistent)
 - **Backend:** Python + Flask
 - **Frontend:** HTML/CSS/JS (served by Flask)
 
@@ -18,9 +22,6 @@ A conversational AI agent with long-term memory that continuously learns from us
 │   └── shared.md
 └── src/                    # Source code
     ├── app.py              # Flask web server
-    ├── main.py             # CLI version
-    ├── extractor.py        # Extracts facts from conversations
-    ├── memory.py           # ChromaDB store & retrieve
     ├── requirements.txt
     └── templates/
         └── index.html      # Chat UI
@@ -48,18 +49,17 @@ Then open **http://localhost:8080** in your browser.
 
 ## Diary Setup (Obsidian)
 
-1. Clone the repo: `git clone https://github.com/renxingyu0822-cmd/Longterm_Memory_Chatbot.git`
-2. Open the `diary/` folder as an Obsidian vault
-3. Each contributor writes to their own diary file; use `shared.md` for joint entries
-4. Sync manually via terminal:
+1. Clone the repo and open the `diary/` folder as an Obsidian vault
+2. Each contributor writes to their own diary file; use `shared.md` for joint entries
+3. Sync manually via terminal:
    ```bash
-   git pull                          # get latest from your collaborator
+   git pull
    git add diary/
    git commit -m "diary: update"
    git push
    ```
 
-## Architecture Overview
+## Planned Architecture
 
 ```
 Conversation
