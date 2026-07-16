@@ -2,6 +2,12 @@
 .obsidian/
 .trash/
 
+# Secrets & local data
+.env
+src/chroma_db/
+__pycache__/
+*.pyc
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Memory Chatbot</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .chat-container {
+      width: 680px;
+      height: 80vh;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 18px 24px;
+      background: #1a1a2e;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    .chat-header span {
+      font-size: 12px;
+      opacity: 0.6;
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .message {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .message.user {
+      background: #1a1a2e;
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.bot {
+      background: #f0f2f5;
+      color: #1a1a2e;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .memory-tag {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+      align-self: flex-start;
+    }
+
+    .input-area {
+      display: flex;
+      padding: 16px;
+      border-top: 1px solid #eee;
+      gap: 10px;
+    }
+
+    input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 24px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: #1a1a2e; }
+
+    button {
+      padding: 12px 20px;
+      background: #1a1a2e;
+      color: white;
+      border: none;
+      border-radius: 24px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .typing {
+      align-self: flex-start;
+      background: #f0f2f5;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border-bottom-left-radius: 4px;
+      font-size: 14px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      Memory Chatbot <span>remembers you across sessions</span>
+    </div>
+    <div class="messages" id="messages">
+      <div class="message bot">Hi! I'm your memory-powered assistant. I'll remember what you tell me across conversations.</div>
+    </div>
+    <div class="input-area">
+      <input id="input" type="text" placeholder="Type a message..." autofocus />
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+
+    function addMessage(text, role) {
+      const div = document.createElement("div");
+      div.className = `message ${role}`;
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+
+    function addMemoryTag(memories) {
+      if (!memories || memories.length === 0) return;
+      const div = document.createElement("div");
+      div.className = "memory-tag";
+      div.textContent = `💾 Remembered: ${memories.join(" · ")}`;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      inputEl.value = "";
+      sendBtn.disabled = true;
+      addMessage(text, "user");
+
+      const typing = document.createElement("div");
+      typing.className = "typing";
+      typing.textContent = "Thinking...";
+      messagesEl.appendChild(typing);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await res.json();
+        typing.remove();
+        addMessage(data.response, "bot");
+        addMemoryTag(data.memories_saved);
+      } catch (e) {
+        typing.remove();
+        addMessage("Something went wrong. Please try again.", "bot");
+      }
+
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
