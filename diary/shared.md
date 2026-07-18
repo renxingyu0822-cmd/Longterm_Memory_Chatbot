@@ -110,6 +110,18 @@ LLM Response
 
 ---
 
+## 2026-07-19 — Prompt Engineering + UI Cleanup
+
+**What we did:**
+- Rewrote the base system prompt — casual, witty, feels like chatting with someone you know well
+  - No corporate filler ("Certainly!", "Of course!")
+  - Weaves in memories naturally without announcing them
+  - Matches the user's energy (playful vs. serious)
+  - Has opinions, can push back, asks questions
+- Removed the hardcoded greeting bubble from the chat UI — conversations now start clean
+
+---
+
 ## 2026-07-18 — Core Memory System (Components 1, 2, 4)
 
 **Decisions made:**
