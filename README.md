@@ -1,15 +1,18 @@
-# Long-Term Memory Chatbot
+# Thumper — Long-Term Memory Chatbot
 
 A conversational AI agent with long-term memory that continuously learns from user interactions, stores knowledge, and retrieves relevant memories to generate personalized, context-aware responses over time.
 
 ## Current Status
 
-Phase 1 complete: LLM connected to a web chat UI.
-Memory system (SQL + vector DB + scoring + forgetting) to be built next.
+**Phase 2 in progress:** Core memory system built and working.
+- Thumper extracts facts from every conversation, stores them in a Chroma vector database, and retrieves relevant memories on each new message.
+- Next: importance scoring, forgetting mechanism, structured storage.
 
 ## Tech Stack
 
 - **LLM:** GPT-4o-mini (OpenAI)
+- **Embeddings:** text-embedding-3-small (OpenAI)
+- **Vector DB:** Chroma (local, persistent)
 - **Backend:** Python + Flask
 - **Frontend:** HTML/CSS/JS (served by Flask)
 
@@ -22,7 +25,11 @@ Memory system (SQL + vector DB + scoring + forgetting) to be built next.
 │   └── shared.md
 └── src/                    # Source code
     ├── app.py              # Flask web server
+    ├── memory.py           # Memory extraction, storage, and retrieval
     ├── requirements.txt
+    ├── chroma_db/          # Persistent vector database (auto-created)
+    ├── static/
+    │   └── thumper.png     # Chatbot avatar
     └── templates/
         └── index.html      # Chat UI
 ```
@@ -47,17 +54,13 @@ python3 app.py
 
 Then open **http://localhost:8080** in your browser.
 
-## Diary Setup (Obsidian)
+To inspect stored memories, open **http://localhost:8080/memories**.
 
-1. Clone the repo and open the `diary/` folder as an Obsidian vault
-2. Each contributor writes to their own diary file; use `shared.md` for joint entries
-3. Sync manually via terminal:
-   ```bash
-   git pull
-   git add diary/
-   git commit -m "diary: update"
-   git push
-   ```
+## How Memory Works
+
+1. **Retrieval** — on each message, Thumper embeds the query and fetches the top 5 semantically relevant memories from Chroma, injecting them into the system prompt.
+2. **Extraction** — after each response, GPT-4o-mini extracts any new facts worth remembering and stores them as embeddings in Chroma.
+3. **Persistence** — memories are saved to `src/chroma_db/` and survive server restarts.
 
 ## Planned Architecture
 
@@ -78,3 +81,15 @@ Prompt Augmentation
 ↓
 LLM Response
 ```
+
+## Diary Setup (Obsidian)
+
+1. Clone the repo and open the `diary/` folder as an Obsidian vault
+2. Each contributor writes to their own diary file; use `shared.md` for joint entries
+3. Sync manually via terminal:
+   ```bash
+   git pull
+   git add diary/
+   git commit -m "diary: update"
+   git push
+   ```
