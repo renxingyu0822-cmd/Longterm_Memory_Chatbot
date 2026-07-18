@@ -71,8 +71,23 @@
     .message.bot {
       background: #f0f2f5;
       color: #1a1a2e;
-      align-self: flex-start;
       border-bottom-left-radius: 4px;
+    }
+
+    .bot-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      align-self: flex-start;
+      max-width: 80%;
+    }
+
+    .bot-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
     }
 
     .memory-tag {
@@ -148,7 +163,21 @@
       const div = document.createElement("div");
       div.className = `message ${role}`;
       div.textContent = text;
-      messagesEl.appendChild(div);
+
+      if (role === "bot") {
+        const row = document.createElement("div");
+        row.className = "bot-row";
+        const avatar = document.createElement("img");
+        avatar.className = "bot-avatar";
+        avatar.src = "/static/thumper.png";
+        avatar.alt = "Thumper";
+        row.appendChild(avatar);
+        row.appendChild(div);
+        messagesEl.appendChild(row);
+      } else {
+        messagesEl.appendChild(div);
+      }
+
       messagesEl.scrollTop = messagesEl.scrollHeight;
       return div;
     }
@@ -170,10 +199,18 @@
       sendBtn.disabled = true;
       addMessage(text, "user");
 
+      const typingRow = document.createElement("div");
+      typingRow.className = "bot-row";
+      const typingAvatar = document.createElement("img");
+      typingAvatar.className = "bot-avatar";
+      typingAvatar.src = "/static/thumper.png";
+      typingAvatar.alt = "Thumper";
       const typing = document.createElement("div");
       typing.className = "typing";
       typing.textContent = "Thinking...";
-      messagesEl.appendChild(typing);
+      typingRow.appendChild(typingAvatar);
+      typingRow.appendChild(typing);
+      messagesEl.appendChild(typingRow);
       messagesEl.scrollTop = messagesEl.scrollHeight;
 
       try {
@@ -183,11 +220,11 @@
           body: JSON.stringify({ message: text }),
         });
         const data = await res.json();
-        typing.remove();
+        typingRow.remove();
         addMessage(data.response, "bot");
         addMemoryTag(data.memories_saved);
       } catch (e) {
-        typing.remove();
+        typingRow.remove();
         addMessage("Something went wrong. Please try again.", "bot");
       }
 

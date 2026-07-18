@@ -110,15 +110,19 @@ LLM Response
 
 ---
 
-## 2026-07-19 — Prompt Engineering + UI Cleanup
+## 2026-07-19 — Naming, Avatar + Prompt Engineering
 
 **What we did:**
+- Named the chatbot **Thumper** — added to system prompt so it knows its own name
+- Added Thumper's profile picture as a circular avatar next to every bot message and the "Thinking..." indicator
+  - Image saved to `src/static/thumper.png`
+  - Served via Flask's static file serving
 - Rewrote the base system prompt — casual, witty, feels like chatting with someone you know well
   - No corporate filler ("Certainly!", "Of course!")
   - Weaves in memories naturally without announcing them
   - Matches the user's energy (playful vs. serious)
   - Has opinions, can push back, asks questions
-- Removed the hardcoded greeting bubble from the chat UI — conversations now start clean
+- Removed the hardcoded greeting bubble — conversations now start clean
 
 ---
 
