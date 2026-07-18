@@ -1,28 +1,28 @@
-import uuid
 from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 import memory
-import extractor
-
-load_dotenv()
 
 app = Flask(__name__)
 client = OpenAI()
 conversation_history = []
 
-
-def build_system_prompt(memories: list[str]) -> str:
-    base = "You are a helpful assistant with long-term memory."
-    if not memories:
-        return base
-    memory_block = "\n".join(f"- {m}" for m in memories)
-    return f"{base}\n\nWhat you remember about the user:\n{memory_block}"
+_BASE_SYSTEM_PROMPT = "You are a helpful assistant with long-term memory. Use any provided memories to give personalized, context-aware responses."
 
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/memories")
+def memories():
+    results = memory.collection.get()
+    docs = results.get("documents", [])
+    lines = "\n".join(f"{i+1}. {d}" for i, d in enumerate(docs)) if docs else "No memories stored yet."
+    return f"<pre style='font-family:monospace;padding:24px'>{lines}</pre>"
 
 
 @app.route("/chat", methods=["POST"])
@@ -32,7 +32,11 @@ def chat():
         return jsonify({"error": "Empty message"}), 400
 
     relevant_memories = memory.retrieve(user_message)
-    system_prompt = build_system_prompt(relevant_memories)
+    if relevant_memories:
+        memory_block = "Relevant memories about the user:\n" + "\n".join(f"- {m}" for m in relevant_memories)
+        system_prompt = f"{_BASE_SYSTEM_PROMPT}\n\n{memory_block}"
+    else:
+        system_prompt = _BASE_SYSTEM_PROMPT
 
     conversation_history.append({"role": "user", "content": user_message})
 
@@ -44,11 +48,9 @@ def chat():
     assistant_message = response.choices[0].message.content
     conversation_history.append({"role": "assistant", "content": assistant_message})
 
-    new_memories = extractor.extract(user_message, assistant_message)
-    for mem in new_memories:
-        memory.store(mem, memory_id=str(uuid.uuid4()))
+    memories_saved = memory.extract_and_store(user_message, assistant_message)
 
-    return jsonify({"response": assistant_message, "memories_saved": new_memories})
+    return jsonify({"response": assistant_message, "memories_saved": memories_saved})
 
 
 if __name__ == "__main__":
