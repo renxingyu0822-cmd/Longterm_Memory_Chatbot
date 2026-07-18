@@ -41,3 +41,16 @@
 
 **Next steps:**
 - Build the full memory system following the 8-component architecture
+
+---
+
+## 2026-07-19
+**What I worked on:** Prompt engineering and UI cleanup.
+
+**How to check the memory base:**
+1. Start the chatbot (`chatbot` in terminal)
+2. Open http://localhost:8080/memories in browser
+3. All stored memories are listed — one per line, numbered
+4. If no memories have been saved yet, it shows "No memories stored yet."
+
+**Note:** Memories are stored in `src/chroma_db/` and persist across server restarts.
