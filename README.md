@@ -4,9 +4,11 @@ A conversational AI agent with long-term memory that continuously learns from us
 
 ## Current Status
 
-**Phase 2 in progress:** Core memory system built and working.
-- Thumper extracts facts from every conversation, stores them in a Chroma vector database, and retrieves relevant memories on each new message.
-- Next: importance scoring, forgetting mechanism, structured storage.
+**Phase 2 complete:** Core memory system fully working with categorisation, forgetting, and conflict resolution.
+- Thumper greets users on every session — introduces itself to new users, welcomes back returning ones by name.
+- Memories are split into `core` (permanent) and `episodic` (time-decay) categories.
+- Conflicting memories (e.g. name changes) are automatically updated.
+- Next: structured SQL storage for precise profile queries.
 
 ## Tech Stack
 
@@ -23,11 +25,13 @@ A conversational AI agent with long-term memory that continuously learns from us
 │   ├── dafei.md
 │   ├── IMMFlight.md
 │   └── shared.md
+├── tests/                  # Unit tests
+│   └── test_app.py
 └── src/                    # Source code
     ├── app.py              # Flask web server
-    ├── memory.py           # Memory extraction, storage, and retrieval
+    ├── memory.py           # Memory extraction, storage, retrieval, and forgetting
     ├── requirements.txt
-    ├── chroma_db/          # Persistent vector database (auto-created)
+    ├── chroma_db/          # Persistent vector database (auto-created, git-ignored)
     ├── static/
     │   └── thumper.png     # Chatbot avatar
     └── templates/
@@ -59,9 +63,19 @@ To inspect stored memories, open **http://localhost:8080/memories**.
 
 ## How Memory Works
 
-1. **Retrieval** — on each message, Thumper embeds the query and fetches the top 5 semantically relevant memories from Chroma, injecting them into the system prompt.
-2. **Extraction** — after each response, GPT-4o-mini extracts any new facts worth remembering and stores them as embeddings in Chroma.
-3. **Persistence** — memories are saved to `src/chroma_db/` and survive server restarts.
+1. **Greeting** — on page load, Thumper generates an opening message. First visit: introduces itself and asks your name. Return visits: greets you like a friend.
+2. **Retrieval** — on each message, Thumper embeds the query and fetches the top 5 semantically relevant memories, injecting them into the system prompt.
+3. **Extraction** — after each response, GPT-4o-mini extracts new facts and classifies them as `core` or `episodic`.
+4. **Conflict resolution** — if a new memory is on the same topic as an existing one, the old one is replaced automatically.
+5. **Forgetting** — episodic memories decay over time using `strength = importance × e^(−0.1 × days_since_last_access)`. Stale memories are pruned on startup.
+6. **Persistence** — all memories are saved to `src/chroma_db/` and survive server restarts.
+
+## Memory Categories
+
+| Category | Examples | Behaviour |
+|----------|----------|-----------|
+| `core` | Name, goals, preferences, personality | Never forgotten |
+| `episodic` | Daily events, passing remarks | Decays over ~7 days |
 
 ## Planned Architecture
 
