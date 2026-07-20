@@ -1,8 +1,10 @@
+from flask import Flask, request, jsonify, render_template
+from markupsafe import escape
+from openai import OpenAI
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from flask import Flask, request, jsonify, render_template
-from openai import OpenAI
 import memory
 
 app = Flask(__name__)
@@ -28,34 +30,70 @@ def index():
 def memories():
     results = memory.collection.get()
     docs = results.get("documents", [])
-    lines = "\n".join(f"{i+1}. {d}" for i, d in enumerate(docs)) if docs else "No memories stored yet."
+    lines = (
+        "\n".join(f"{i + 1}. {escape(str(doc))}" for i, doc in enumerate(docs))
+        if docs
+        else "No memories stored yet."
+    )
     return f"<pre style='font-family:monospace;padding:24px'>{lines}</pre>"
 
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_message = request.json.get("message", "").strip()
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
+
+    raw_message = payload.get("message")
+    if not isinstance(raw_message, str):
+        return jsonify({"error": "Message must be a string"}), 400
+
+    user_message = raw_message.strip()
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
 
-    relevant_memories = memory.retrieve(user_message)
+    try:
+        relevant_memories = memory.retrieve(user_message)
+    except Exception:
+        app.logger.exception("Failed to retrieve memories")
+        return jsonify({"error": "The chat service is temporarily unavailable"}), 502
+
     if relevant_memories:
         memory_block = "Relevant memories about the user:\n" + "\n".join(f"- {m}" for m in relevant_memories)
         system_prompt = f"{_BASE_SYSTEM_PROMPT}\n\n{memory_block}"
     else:
         system_prompt = _BASE_SYSTEM_PROMPT
 
-    conversation_history.append({"role": "user", "content": user_message})
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "system", "content": system_prompt}] + conversation_history,
-    )
+    user_turn = {"role": "user", "content": user_message}
+    try:
+        from typing import cast
+        from openai.types.chat import ChatCompletionMessageParam
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=cast(
+                list[ChatCompletionMessageParam],
+                [{"role": "system", "content": system_prompt}]
+                + conversation_history
+                + [user_turn]
+            ),
+        )
+    except Exception:
+        app.logger.exception("Failed to generate a chat response")
+        return jsonify({"error": "The chat service is temporarily unavailable"}), 502
 
     assistant_message = response.choices[0].message.content
+    if not assistant_message:
+        app.logger.error("The chat model returned an empty response")
+        return jsonify({"error": "The chat service returned an empty response"}), 502
+
+    conversation_history.append(user_turn)
     conversation_history.append({"role": "assistant", "content": assistant_message})
 
-    memories_saved = memory.extract_and_store(user_message, assistant_message)
+    try:
+        memories_saved = memory.extract_and_store(user_message, assistant_message)
+    except Exception:
+        app.logger.exception("Failed to extract or store memories")
+        memories_saved = []
 
     return jsonify({"response": assistant_message, "memories_saved": memories_saved})
 

@@ -20,7 +20,11 @@ def extract(user_message: str, assistant_response: str) -> list[str]:
         ],
         temperature=0,
     )
-    raw = response.choices[0].message.content.strip()
+    content = response.choices[0].message.content
+    if not content:
+        return []
+
+    raw = content.strip()
     if not raw:
         return []
     return [line.strip() for line in raw.splitlines() if line.strip()]

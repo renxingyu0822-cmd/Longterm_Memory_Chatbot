@@ -1,14 +1,14 @@
-import os
 import uuid
 from dotenv import load_dotenv
 from openai import OpenAI
+from typing import cast, Any
 import memory
 import extractor
 
 load_dotenv()
 
 client = OpenAI()
-conversation_history = []
+conversation_history: list = []
 
 
 def build_system_prompt(memories: list[str]) -> str:
@@ -25,12 +25,16 @@ def chat(user_message: str) -> str:
 
     conversation_history.append({"role": "user", "content": user_message})
 
+    # The OpenAI client typings expect specific message param types; cast to Any to satisfy the type checker
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "system", "content": system_prompt}] + conversation_history,
+        messages=cast(Any, [{"role": "system", "content": system_prompt}] + conversation_history),
     )
 
     assistant_message = response.choices[0].message.content
+    if not assistant_message:
+        raise RuntimeError("The chat model returned an empty response")
+
     conversation_history.append({"role": "assistant", "content": assistant_message})
 
     new_memories = extractor.extract(user_message, assistant_message)

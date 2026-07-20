@@ -193,7 +193,7 @@
 
     async function sendMessage() {
       const text = inputEl.value.trim();
-      if (!text) return;
+      if (!text || sendBtn.disabled) return;
 
       inputEl.value = "";
       sendBtn.disabled = true;
@@ -220,16 +220,22 @@
           body: JSON.stringify({ message: text }),
         });
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Something went wrong. Please try again.");
+        }
+        if (typeof data.response !== "string") {
+          throw new Error("The server returned an invalid response.");
+        }
         typingRow.remove();
         addMessage(data.response, "bot");
         addMemoryTag(data.memories_saved);
       } catch (e) {
         typingRow.remove();
-        addMessage("Something went wrong. Please try again.", "bot");
+        addMessage(e.message || "Something went wrong. Please try again.", "bot");
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
       }
-
-      sendBtn.disabled = false;
-      inputEl.focus();
     }
 
     sendBtn.addEventListener("click", sendMessage);

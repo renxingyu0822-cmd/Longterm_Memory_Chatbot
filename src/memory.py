@@ -1,9 +1,11 @@
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 import chromadb
 from openai import OpenAI
+import numpy as np
 
 client = OpenAI()
 
@@ -35,7 +37,10 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
         )}],
     )
     try:
-        memories = json.loads(response.choices[0].message.content.strip())
+        content = response.choices[0].message.content
+        if content is None:
+            return []
+        memories = json.loads(content.strip())
         memories = [m for m in memories if isinstance(m, str) and m.strip()]
     except (json.JSONDecodeError, AttributeError):
         return []
@@ -48,12 +53,34 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
         input=memories,
     )
     embeddings = [r.embedding for r in embeddings_response.data]
+    # chromadb may expect a numeric array type for embeddings; convert to numpy float32
+    embeddings_array = np.array(embeddings, dtype=np.float32)
     collection.add(
         documents=memories,
-        embeddings=embeddings,
+        embeddings=embeddings_array,
         ids=[str(uuid.uuid4()) for _ in memories],
     )
     return memories
+
+
+def store(memory_text: str, memory_id: str | None = None) -> None:
+    """Embed and persist a single memory."""
+    text = memory_text.strip()
+    if not text:
+        return
+
+    embedding_response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=[text],
+    )
+    collection.add(
+        documents=[text],
+        embeddings=np.array(
+            [embedding_response.data[0].embedding],
+            dtype=np.float32,
+        ),
+        ids=[memory_id or str(uuid.uuid4())],
+    )
 
 
 def retrieve(query: str, n: int = 5) -> list[str]:
@@ -63,8 +90,9 @@ def retrieve(query: str, n: int = 5) -> list[str]:
         model="text-embedding-3-small",
         input=[query],
     )
+    query_emb = np.array([embedding_response.data[0].embedding], dtype=np.float32)
     results = collection.query(
-        query_embeddings=[embedding_response.data[0].embedding],
+        query_embeddings=query_emb,
         n_results=min(n, collection.count()),
     )
     return results["documents"][0] if results["documents"] else []
