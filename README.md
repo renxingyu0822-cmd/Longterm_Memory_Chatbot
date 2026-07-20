@@ -39,16 +39,17 @@ A conversational AI agent with long-term memory that continuously learns from us
 ```bash
 # 1. Clone the repo
 git clone https://github.com/renxingyu0822-cmd/Longterm_Memory_Chatbot.git
-cd Longterm_Memory_Chatbot/src
+cd Longterm_Memory_Chatbot
 
 # 2. Install dependencies
-pip3 install -r requirements.txt
+pip3 install -r src/requirements.txt
 
 # 3. Add your OpenAI API key
-cp .env.example .env
-# edit .env and paste your key
+cp src/.env.example src/.env
+# edit src/.env and paste your key
 
 # 4. Run the web app
+cd src
 python3 app.py
 ```
 
