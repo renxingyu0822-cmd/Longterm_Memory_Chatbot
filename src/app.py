@@ -11,6 +11,10 @@ app = Flask(__name__)
 client = OpenAI()
 conversation_history = []
 
+pruned = memory.forget()
+if pruned:
+    app.logger.info("Pruned %d stale episodic memories on startup", pruned)
+
 _BASE_SYSTEM_PROMPT = """Your name is Thumper. You are a witty, relaxed companion who genuinely knows the user. You chat like a close friend — casual, warm, a little playful — not like a corporate chatbot.
 
 Guidelines:
@@ -18,7 +22,13 @@ Guidelines:
 - Use the user's memories naturally — weave them in without making it feel like you're reading from a file. Don't announce "I remember that..."; just use what you know.
 - Match the user's energy. If they're being silly, roll with it. If they're venting, dial back the jokes.
 - It's okay to have opinions, be curious, and push back a little — that's what makes conversation interesting.
-- Never be stiff, overly formal, or start responses with "Certainly!" or "Of course!"."""
+- Never be stiff, overly formal, or start responses with "Certainly!" or "Of course!".
+
+Getting to know the user:
+- If you don't know the user's name, find a natural moment early in the conversation to ask.
+- If you don't know their gender or preferred pronouns, pick it up from context or ask casually when it feels right.
+- Other useful things to learn over time: what they do, where they're from, their interests, age group.
+- Never ask multiple questions at once — one thing at a time, woven naturally into the conversation. Don't make it feel like a form."""
 
 
 @app.route("/")
@@ -28,14 +38,49 @@ def index():
 
 @app.route("/memories")
 def memories():
-    results = memory.collection.get()
+    results = memory.collection.get(include=["documents", "metadatas"])
     docs = results.get("documents", [])
-    lines = (
-        "\n".join(f"{i + 1}. {escape(str(doc))}" for i, doc in enumerate(docs))
-        if docs
-        else "No memories stored yet."
+    metas = results.get("metadatas", [])
+    if not docs:
+        return "<pre style='font-family:monospace;padding:24px'>No memories stored yet.</pre>"
+
+    core = [(d, m) for d, m in zip(docs, metas) if m and m.get("category") == "core"]
+    episodic = [(d, m) for d, m in zip(docs, metas) if not m or m.get("category") != "core"]
+
+    def fmt(entries):
+        return "\n".join(
+            f"  {i+1}. [{(m or {}).get('importance', 0):.2f}] {escape(str(d))}"
+            for i, (d, m) in enumerate(entries)
+        ) or "  (none)"
+
+    body = f"CORE (permanent)\n{fmt(core)}\n\nEPISODIC (may be forgotten)\n{fmt(episodic)}"
+    return f"<pre style='font-family:monospace;padding:24px'>{body}</pre>"
+
+
+@app.route("/greet")
+def greet():
+    is_first_meeting = memory.collection.count() == 0
+    if is_first_meeting:
+        prompt = "This is your first time meeting this user. Greet them warmly, introduce yourself as Thumper, and ask for their name. One or two sentences max."
+    else:
+        known = memory.collection.get(include=["documents", "metadatas"])
+        core_facts = [
+            d for d, m in zip(known["documents"], known["metadatas"])
+            if m and m.get("category") == "core"
+        ]
+        facts_block = "\n".join(f"- {f}" for f in core_facts[:5]) if core_facts else ""
+        prompt = f"Welcome back the user like a friend you already know. Keep it short and casual — one or two sentences. Don't list what you know; just greet them naturally.{chr(10) + 'What you know: ' + chr(10) + facts_block if facts_block else ''}"
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": _BASE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
     )
-    return f"<pre style='font-family:monospace;padding:24px'>{lines}</pre>"
+    message = response.choices[0].message.content or "Hey! What's up?"
+    conversation_history.append({"role": "assistant", "content": message})
+    return jsonify({"response": message})
 
 
 @app.route("/chat", methods=["POST"])
@@ -58,8 +103,12 @@ def chat():
         app.logger.exception("Failed to retrieve memories")
         return jsonify({"error": "The chat service is temporarily unavailable"}), 502
 
-    if relevant_memories:
-        memory_block = "Relevant memories about the user:\n" + "\n".join(f"- {m}" for m in relevant_memories)
+    is_first_meeting = memory.collection.count() == 0
+
+    if is_first_meeting:
+        system_prompt = _BASE_SYSTEM_PROMPT + "\n\nThis is your first time meeting this user. You know nothing about them yet. Your priority is to learn their name and get to know them — ask warmly and naturally, like meeting someone new for the first time. Say 'nice to meet you' once you know their name."
+    elif relevant_memories:
+        memory_block = "What you know about the user:\n" + "\n".join(f"- {m}" for m in relevant_memories)
         system_prompt = f"{_BASE_SYSTEM_PROMPT}\n\n{memory_block}"
     else:
         system_prompt = _BASE_SYSTEM_PROMPT

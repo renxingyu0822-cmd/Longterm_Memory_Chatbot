@@ -34,6 +34,9 @@
       font-size: 16px;
       font-weight: 600;
       letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
 
     .chat-header span {
@@ -42,6 +45,22 @@
       font-weight: 400;
       margin-left: 8px;
     }
+
+    .memory-btn {
+      font-size: 12px;
+      font-weight: 500;
+      color: white;
+      opacity: 0.7;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    .memory-btn:hover { opacity: 1; }
 
     .messages {
       flex: 1;
@@ -144,7 +163,8 @@
 <body>
   <div class="chat-container">
     <div class="chat-header">
-      Memory Chatbot <span>powered by GPT-4o-mini</span>
+      <div>Thumper <span>powered by GPT-4o-mini</span></div>
+      <a class="memory-btn" href="/memories" target="_blank">🧠 Memories</a>
     </div>
     <div class="messages" id="messages">
     </div>
@@ -242,6 +262,35 @@
     inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") sendMessage();
     });
+
+    async function greet() {
+      sendBtn.disabled = true;
+      const typingRow = document.createElement("div");
+      typingRow.className = "bot-row";
+      const typingAvatar = document.createElement("img");
+      typingAvatar.className = "bot-avatar";
+      typingAvatar.src = "/static/thumper.png";
+      typingAvatar.alt = "Thumper";
+      const typing = document.createElement("div");
+      typing.className = "typing";
+      typing.textContent = "Thinking...";
+      typingRow.appendChild(typingAvatar);
+      typingRow.appendChild(typing);
+      messagesEl.appendChild(typingRow);
+
+      try {
+        const res = await fetch("/greet");
+        const data = await res.json();
+        typingRow.remove();
+        addMessage(data.response, "bot");
+      } catch (e) {
+        typingRow.remove();
+      }
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+
+    greet();
   </script>
 </body>
 </html>

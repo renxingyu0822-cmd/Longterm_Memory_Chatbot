@@ -110,22 +110,6 @@ LLM Response
 
 ---
 
-## 2026-07-19 — Naming, Avatar + Prompt Engineering
-
-**What we did:**
-- Named the chatbot **Thumper** — added to system prompt so it knows its own name
-- Added Thumper's profile picture as a circular avatar next to every bot message and the "Thinking..." indicator
-  - Image saved to `src/static/thumper.png`
-  - Served via Flask's static file serving
-- Rewrote the base system prompt — casual, witty, feels like chatting with someone you know well
-  - No corporate filler ("Certainly!", "Of course!")
-  - Weaves in memories naturally without announcing them
-  - Matches the user's energy (playful vs. serious)
-  - Has opinions, can push back, asks questions
-- Removed the hardcoded greeting bubble — conversations now start clean
-
----
-
 ## 2026-07-18 — Core Memory System (Components 1, 2, 4)
 
 **Decisions made:**
@@ -153,34 +137,44 @@ LLM Response
 
 ---
 
-## 2026-07-20 — Reliability, Security + Memory Storage Fixes
+## 2026-07-19 — Naming, Avatar + Prompt Engineering
 
-**What changed:**
+**What we did:**
+- Named the chatbot **Thumper** — added to system prompt so it knows its own name
+- Added Thumper's profile picture as a circular avatar next to every bot message and the "Thinking..." indicator
+  - Image saved to `src/static/thumper.png`
+  - Served via Flask's static file serving
+- Rewrote the base system prompt — casual, witty, feels like chatting with someone you know well
+  - No corporate filler ("Certainly!", "Of course!")
+  - Weaves in memories naturally without announcing them
+  - Matches the user's energy (playful vs. serious)
+  - Has opinions, can push back, asks questions
+- Removed the hardcoded greeting bubble — conversations now start clean
 
-- Hardened the Flask `/chat` API:
-  - Validates that the request body is a JSON object and `message` is a string.
-  - Returns clear `400` responses for invalid input and `502` responses for upstream failures.
-  - Handles memory retrieval, OpenAI response, and memory extraction/storage failures without crashing the route.
-- Conversation history is now updated only after a non-empty assistant response, preventing incomplete turns after failed requests.
-- Escaped memory text rendered by `/memories` to prevent stored HTML or JavaScript from being executed.
-- Improved the chat UI:
-  - Prevents duplicate submissions while a request is running.
-  - Displays error messages returned by the server.
-  - Validates response data and always restores the send button and input focus.
-- Added safe handling for empty OpenAI responses in the CLI and standalone extractor.
-- Added an explicit `memory.store(memory_text, memory_id)` API for embedding and saving individual memories. This fixes the missing `memory.store` implementation and its Pylance error in `main.py`.
-- Normalized Chroma embedding inputs as NumPy `float32` arrays.
-- Ignored local `.venv/` and `.vscode/` directories in Git.
+---
 
-**Testing:**
+## 2026-07-20 — Reliability, Security + Memory Categorisation
 
-- Added five Flask route tests for request validation, successful chat, empty model responses, history consistency, and safe memory rendering.
-- All five tests pass with Python's `unittest` runner.
+**Security & robustness (IMMFlight):**
+- Hardened the Flask `/chat` API — validates JSON body and message type, returns clear `400`/`502` errors
+- Conversation history only updated after a non-empty assistant response
+- Escaped memory text on `/memories` to prevent XSS
+- Improved chat UI: prevents duplicate sends, surfaces server errors, validates response data
+- Added 5 Flask route tests — all passing with `unittest`
 
-**Commit:** `79e029d` — `fix: improve chat error handling and memory storage`
+**Memory system (dafei):**
+- Split memories into two categories:
+  - `core` — permanent facts (name, goals, preferences, personality). Never forgotten.
+  - `episodic` — time-sensitive remarks (daily events, passing comments). Fade over time.
+- Forgetting curve: `strength = importance × e^(−0.1 × days_since_last_access)`. Stale memories pruned on startup.
+- Conflict resolution: same-topic memories (distance 0.15–0.5) replace old ones instead of duplicating.
+- Deduplication: near-identical memories (distance < 0.15) are skipped.
+- Updated extraction prompt to catch casual preferences (e.g. "I don't really like X").
+- Thumper now starts every conversation with a greeting — introduces itself on first meeting, greets returning users by name.
+- Added "Getting to know the user" to system prompt — asks for name, pronouns, interests one at a time.
+- Added 🧠 Memories button in header linking to `/memories` in a new tab.
+- `/memories` now shows CORE / EPISODIC sections with importance scores.
 
-**Suggested next steps:**
-
-- Test the complete chat, retrieval, and persistence flow manually with valid OpenAI credentials.
-- Consolidate the CLI's separate extractor/store flow with the web app's `extract_and_store()` flow.
-- Continue with importance scoring, time-based forgetting, and structured user-profile storage.
+**Next steps:**
+- Structured storage (SQL) for precise profile queries (component 3)
+- Evaluate memory quality over longer conversations
