@@ -178,3 +178,48 @@ LLM Response
 **Next steps:**
 - Structured storage (SQL) for precise profile queries (component 3)
 - Evaluate memory quality over longer conversations
+
+---
+
+## 2026-07-22 — Relative-Time Memory + Memory Dashboard
+
+**Memory changes:**
+- Episodic memories now resolve relative dates against the timezone-aware local system time at write time.
+- Supported expressions include today, tomorrow, the day after tomorrow, yesterday, and their common Chinese equivalents.
+- Resolved dates are retained in memory text; episodic metadata now records `recorded_at` and, when available, `event_date`.
+- Messages containing relative dates are forced to `episodic` and have a deterministic storage fallback if the extraction model returns no result.
+- Existing `core`/`episodic` storage, decay, retrieval scoring, deduplication, and conflict handling remain in place.
+
+**Memory dashboard:**
+- Rebuilt `/memories` as a responsive dashboard with separate long-term and short-term sections.
+- Cards display importance plus either permanent-retention status or an episodic event date.
+- Added `/memories?demo=1` to show both categories using clearly labelled, non-persistent example data.
+- Jinja auto-escaping continues to protect rendered memory content.
+
+**Verification:**
+- Expanded the `unittest` suite from 5 to 10 tests.
+- Added coverage for relative-date conversion, temporal fallback storage, metadata, demo rendering, and memory-output escaping.
+- All 10 tests pass.
+
+---
+
+## 2026-07-22 — Next Plan: Short-Term to Long-Term Consolidation
+
+**Status:** Planned, not implemented.
+
+**Goal:** Allow stable and repeatedly useful `episodic` memories to become permanent `core` memories instead of only decaying or being deleted.
+
+**Proposed design:**
+- Add `consolidate_memories()` to scan short-term memories periodically.
+- Select candidates using repeated mentions, `access_count`, memory age, and importance (initial proposal: at least 3 accesses/mentions and importance ≥ 0.7).
+- Use an LLM review step to reject one-off events and confirm that a candidate is a durable fact, preference, habit, relationship, or ongoing goal.
+- Check for duplicates and conflicts with existing `core` memories before promotion.
+- On approval, change `category` from `episodic` to `core` and store `promoted_at` plus `promotion_reason` metadata.
+- Initially run consolidation at application startup; consider a scheduled background task after evaluating cost and latency.
+
+**Acceptance tests:**
+- Repeated stable preferences are promoted.
+- Temporary appointments and dated events are not promoted.
+- Duplicate core memories are not created.
+- Conflicting core memories follow the existing replacement policy.
+- Candidates below the configured thresholds remain episodic.

@@ -90,6 +90,16 @@ class MemoriesRouteTests(unittest.TestCase):
         self.assertNotIn("<script>", body)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", body)
 
+    def test_demo_displays_long_and_short_term_memories(self):
+        response = self.client.get("/memories?demo=1")
+
+        body = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("长期记忆", body)
+        self.assertIn("短期记忆", body)
+        self.assertIn("用户的名字是小明", body)
+        self.assertIn("示例数据", body)
+
 
 if __name__ == "__main__":
     unittest.main()

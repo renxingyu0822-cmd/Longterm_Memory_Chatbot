@@ -1,7 +1,8 @@
 import json
 import math
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import chromadb
@@ -36,13 +37,56 @@ Conversation:
 User: {user_message}
 Assistant: {assistant_message}
 
+Current system datetime: {current_time}
+For episodic memories, resolve relative dates (for example "today", "tomorrow",
+"yesterday", "\u4eca\u5929", "\u660e\u5929", "\u540e\u5929") against this datetime. Include the
+resolved YYYY-MM-DD date in the memory text, while preserving any stated clock time.
+
 Return only the JSON array, nothing else."""
 
 _DECAY_RATE = 0.1  # episodic strength halves every ~7 days
 
+_RELATIVE_DATE_PATTERNS = (
+    (re.compile(r"\u5927\u540e\u5929(?![\uff08(]\d{4}-\d{2}-\d{2}[\uff09)])"), 3),
+    (re.compile(r"\u540e\u5929(?![\uff08(]\d{4}-\d{2}-\d{2}[\uff09)])"), 2),
+    (re.compile(r"\u660e\u5929(?![\uff08(]\d{4}-\d{2}-\d{2}[\uff09)])"), 1),
+    (re.compile(r"\u4eca\u5929(?![\uff08(]\d{4}-\d{2}-\d{2}[\uff09)])"), 0),
+    (re.compile(r"\u6628\u5929(?![\uff08(]\d{4}-\d{2}-\d{2}[\uff09)])"), -1),
+    (re.compile(r"\u524d\u5929(?![\uff08(]\d{4}-\d{2}-\d{2}[\uff09)])"), -2),
+    (re.compile(r"\bday after tomorrow\b(?!\s*\(\d{4}-\d{2}-\d{2}\))", re.IGNORECASE), 2),
+    (re.compile(r"\btomorrow\b(?!\s*\(\d{4}-\d{2}-\d{2}\))", re.IGNORECASE), 1),
+    (re.compile(r"\btoday\b(?!\s*\(\d{4}-\d{2}-\d{2}\))", re.IGNORECASE), 0),
+    (re.compile(r"\byesterday\b(?!\s*\(\d{4}-\d{2}-\d{2}\))", re.IGNORECASE), -1),
+)
+
 
 def _now() -> float:
     return datetime.now(timezone.utc).timestamp()
+
+
+def _local_now() -> datetime:
+    """Return the system-local, timezone-aware datetime used to resolve relative dates."""
+    return datetime.now().astimezone()
+
+
+def resolve_relative_dates(memory_text: str, reference_time: datetime | None = None) -> tuple[str, list[str]]:
+    """Freeze relative date words in a memory to dates based on the recording time."""
+    reference = reference_time or _local_now()
+    resolved_dates: list[str] = []
+    resolved_text = memory_text
+
+    for pattern, day_offset in _RELATIVE_DATE_PATTERNS:
+        target_date = (reference + timedelta(days=day_offset)).date().isoformat()
+
+        def add_date(match: re.Match[str]) -> str:
+            resolved_dates.append(target_date)
+            if match.group(0)[0].isascii():
+                return f"{match.group(0)} ({target_date})"
+            return f"{match.group(0)}\uff08{target_date}\uff09"
+
+        resolved_text = pattern.sub(add_date, resolved_text)
+
+    return resolved_text, list(dict.fromkeys(resolved_dates))
 
 
 def _decay_strength(importance: float, last_accessed: float) -> float:
@@ -50,12 +94,24 @@ def _decay_strength(importance: float, last_accessed: float) -> float:
     return importance * math.exp(-_DECAY_RATE * days)
 
 
+def _as_float(val, default: float = 0.5) -> float:
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+
 def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
+    recorded_at = _local_now()
+    normalized_user_message, source_relative_dates = resolve_relative_dates(
+        user_message.strip(), recorded_at
+    )
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": _EXTRACT_PROMPT.format(
             user_message=user_message,
             assistant_message=assistant_message,
+            current_time=recorded_at.isoformat(timespec="seconds"),
         )}],
     )
     content = response.choices[0].message.content
@@ -68,13 +124,38 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
             if isinstance(i, dict) and isinstance(i.get("text"), str) and i["text"].strip()
         ]
     except (json.JSONDecodeError, AttributeError):
+        items = []
+
+    if not items and source_relative_dates:
+        items = [{
+            "text": f"User's time-sensitive note: {normalized_user_message}",
+            "category": "episodic",
+            "importance": 0.5,
+        }]
+    elif not items:
         return []
 
-    if not items:
-        return []
+    has_relative_time_memory = False
+    for item in items:
+        text, relative_dates = resolve_relative_dates(item["text"].strip(), recorded_at)
+        if not relative_dates:
+            relative_dates = [date for date in source_relative_dates if date in text]
+        item["text"] = text
+        item["relative_dates"] = relative_dates
+        if relative_dates:
+            item["category"] = "episodic"
+            has_relative_time_memory = True
 
-    texts = [i["text"].strip() for i in items]
-    now = _now()
+    if source_relative_dates and not has_relative_time_memory:
+        items.append({
+            "text": f"User's time-sensitive note: {normalized_user_message}",
+            "category": "episodic",
+            "importance": 0.5,
+            "relative_dates": source_relative_dates,
+        })
+
+    texts = [i["text"] for i in items]
+    now = recorded_at.timestamp()
 
     embeddings_response = client.embeddings.create(
         model="text-embedding-3-small",
@@ -90,22 +171,35 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
                 n_results=1,
                 include=["distances"],
             )
-            dist = hit["distances"][0][0] if hit["distances"][0] else 1.0
+            # Safely extract distance and id values; the Chroma client may return None or empty lists
+            distances = hit.get("distances") or []
+            first_dist_list = distances[0] if distances else None
+            dist = float(first_dist_list[0]) if first_dist_list and len(first_dist_list) > 0 else 1.0
+
             if dist < 0.15:
                 continue  # near-identical, skip
             if dist < 0.5:
                 # same topic, different value — delete old and store new
-                old_id = hit["ids"][0][0]
-                collection.delete(ids=[old_id])
+                ids = hit.get("ids") or []
+                first_id_list = ids[0] if ids else None
+                old_id = first_id_list[0] if first_id_list and len(first_id_list) > 0 else None
+                if old_id:
+                    collection.delete(ids=[old_id])
         new_texts.append(text)
         new_embeddings.append(emb)
-        new_metas.append({
+        metadata = {
             "category": item.get("category", "episodic"),
             "importance": float(item.get("importance", 0.5)),
             "created_at": now,
             "last_accessed": now,
             "access_count": 0,
-        })
+        }
+        if metadata["category"] == "episodic":
+            metadata["recorded_at"] = recorded_at.isoformat(timespec="seconds")
+            relative_dates = item.get("relative_dates") or []
+            if relative_dates:
+                metadata["event_date"] = relative_dates[0]
+        new_metas.append(metadata)
 
     if not new_texts:
         return []
@@ -123,7 +217,11 @@ def store(memory_text: str, category: str = "core", importance: float = 0.9, mem
     text = memory_text.strip()
     if not text:
         return
-    now = _now()
+    recorded_at = _local_now()
+    relative_dates: list[str] = []
+    if category == "episodic":
+        text, relative_dates = resolve_relative_dates(text, recorded_at)
+    now = recorded_at.timestamp()
     embedding_response = client.embeddings.create(
         model="text-embedding-3-small",
         input=[text],
@@ -137,6 +235,8 @@ def store(memory_text: str, category: str = "core", importance: float = 0.9, mem
             "created_at": now,
             "last_accessed": now,
             "access_count": 0,
+            **({"recorded_at": recorded_at.isoformat(timespec="seconds")} if category == "episodic" else {}),
+            **({"event_date": relative_dates[0]} if relative_dates else {}),
         }],
         ids=[memory_id or str(uuid.uuid4())],
     )
@@ -159,10 +259,19 @@ def retrieve(query: str, n: int = 5) -> list[str]:
         include=["documents", "distances", "metadatas"],
     )
 
-    docs = results["documents"][0]
-    distances = results["distances"][0]
-    metadatas = results["metadatas"][0]
-    ids = results["ids"][0]
+    # The chroma client may return None for any of these keys; handle safely.
+    docs_list = results.get("documents") or []
+    distances_list = results.get("distances") or []
+    metadatas_list = results.get("metadatas") or []
+    ids_list = results.get("ids") or []
+
+    if not docs_list:
+        return []
+
+    docs = docs_list[0] if docs_list and len(docs_list) > 0 and docs_list[0] is not None else []
+    distances = distances_list[0] if distances_list and len(distances_list) > 0 and distances_list[0] is not None else []
+    metadatas = metadatas_list[0] if metadatas_list and len(metadatas_list) > 0 and metadatas_list[0] is not None else []
+    ids = ids_list[0] if ids_list and len(ids_list) > 0 and ids_list[0] is not None else []
 
     now = _now()
     scored = []
@@ -173,8 +282,8 @@ def retrieve(query: str, n: int = 5) -> list[str]:
             final_score = semantic_score
         else:
             strength = _decay_strength(
-                meta.get("importance", 0.5),
-                meta.get("last_accessed", now),
+                _as_float(meta.get("importance", 0.5)),
+                _as_float(meta.get("last_accessed", now), default=now),
             )
             final_score = semantic_score * strength
         scored.append((final_score, doc, meta, mem_id))
@@ -204,12 +313,15 @@ def forget(threshold: float = 0.05) -> int:
     now = _now()
     to_delete = []
 
-    for mem_id, meta in zip(all_results["ids"], all_results["metadatas"]):
+    ids = all_results.get("ids") or []
+    metas = all_results.get("metadatas") or []
+
+    for mem_id, meta in zip(ids, metas):
         if not meta or meta.get("category") == "core":
             continue
         strength = _decay_strength(
-            meta.get("importance", 0.5),
-            meta.get("last_accessed", now),
+            _as_float(meta.get("importance", 0.5)),
+            _as_float(meta.get("last_accessed", now), default=now),
         )
         if strength < threshold:
             to_delete.append(mem_id)

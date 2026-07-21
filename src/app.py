@@ -1,5 +1,6 @@
+from datetime import datetime, timedelta
+
 from flask import Flask, request, jsonify, render_template
-from markupsafe import escape
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -38,23 +39,55 @@ def index():
 
 @app.route("/memories")
 def memories():
-    results = memory.collection.get(include=["documents", "metadatas"])
-    docs = results.get("documents", [])
-    metas = results.get("metadatas", [])
-    if not docs:
-        return "<pre style='font-family:monospace;padding:24px'>No memories stored yet.</pre>"
+    is_demo = request.args.get("demo") == "1"
 
-    core = [(d, m) for d, m in zip(docs, metas) if m and m.get("category") == "core"]
-    episodic = [(d, m) for d, m in zip(docs, metas) if not m or m.get("category") != "core"]
+    if is_demo:
+        now = datetime.now().astimezone()
+        tomorrow = (now + timedelta(days=1)).date().isoformat()
+        today = now.date().isoformat()
+        raw_entries = [
+            ("用户的名字是小明", {"category": "core", "importance": 0.98}),
+            ("用户是一名软件工程师，目前居住在上海", {"category": "core", "importance": 0.90}),
+            ("用户喜欢手冲咖啡和周末徒步", {"category": "core", "importance": 0.82}),
+            (
+                f"用户明天（{tomorrow}）下午 3 点参加项目会议",
+                {"category": "episodic", "importance": 0.76, "event_date": tomorrow},
+            ),
+            (
+                f"用户今天（{today}）工作有些疲惫",
+                {"category": "episodic", "importance": 0.48, "event_date": today},
+            ),
+        ]
+    else:
+        results = memory.collection.get(include=["documents", "metadatas"])
+        docs = results.get("documents") or []
+        metas = results.get("metadatas") or []
+        if len(metas) < len(docs):
+            metas = [*metas, *([None] * (len(docs) - len(metas)))]
+        raw_entries = list(zip(docs, metas))
 
-    def fmt(entries):
-        return "\n".join(
-            f"  {i+1}. [{(m or {}).get('importance', 0):.2f}] {escape(str(d))}"
-            for i, (d, m) in enumerate(entries)
-        ) or "  (none)"
+    def view_model(document, metadata):
+        meta = metadata or {}
+        importance = max(0.0, min(1.0, float(meta.get("importance", 0))))
+        return {
+            "text": str(document),
+            "importance": importance,
+            "importance_percent": round(importance * 100),
+            "event_date": meta.get("event_date"),
+            "category": meta.get("category", "episodic"),
+        }
 
-    body = f"CORE (permanent)\n{fmt(core)}\n\nEPISODIC (may be forgotten)\n{fmt(episodic)}"
-    return f"<pre style='font-family:monospace;padding:24px'>{body}</pre>"
+    entries = [view_model(document, metadata) for document, metadata in raw_entries]
+    core = [entry for entry in entries if entry["category"] == "core"]
+    episodic = [entry for entry in entries if entry["category"] != "core"]
+
+    return render_template(
+        "memories.html",
+        core_memories=core,
+        episodic_memories=episodic,
+        is_demo=is_demo,
+        total=len(entries),
+    )
 
 
 @app.route("/greet")
@@ -64,8 +97,10 @@ def greet():
         prompt = "This is your first time meeting this user. Greet them warmly, introduce yourself as Thumper, and ask for their name. One or two sentences max."
     else:
         known = memory.collection.get(include=["documents", "metadatas"])
+        known_docs = known.get("documents") or []
+        known_metas = known.get("metadatas") or []
         core_facts = [
-            d for d, m in zip(known["documents"], known["metadatas"])
+            d for d, m in zip(known_docs, known_metas)
             if m and m.get("category") == "core"
         ]
         facts_block = "\n".join(f"- {f}" for f in core_facts[:5]) if core_facts else ""

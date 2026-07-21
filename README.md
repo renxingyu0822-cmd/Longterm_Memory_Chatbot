@@ -8,7 +8,7 @@ A conversational AI agent with long-term memory that continuously learns from us
 - Thumper greets users on every session — introduces itself to new users, welcomes back returning ones by name.
 - Memories are split into `core` (permanent) and `episodic` (time-decay) categories.
 - Conflicting memories (e.g. name changes) are automatically updated.
-- Next: structured SQL storage for precise profile queries.
+- Next: memory consolidation — promote stable, repeatedly useful `episodic` memories to `core`.
 
 ## Tech Stack
 
@@ -76,6 +76,21 @@ To inspect stored memories, open **http://localhost:8080/memories**.
 |----------|----------|-----------|
 | `core` | Name, goals, preferences, personality | Never forgotten |
 | `episodic` | Daily events, passing remarks | Decays over ~7 days |
+
+## Next Step — Memory Consolidation
+
+The next planned feature is automatic promotion from short-term memory to long-term memory. It is **planned, not implemented yet**.
+
+Initial design:
+
+1. Periodically scan `episodic` memories as promotion candidates.
+2. Use evidence such as repeated mentions, `access_count`, age, and importance. Initial thresholds will start around three accesses or mentions and importance of at least `0.7`, then be tuned through evaluation.
+3. Ask the LLM to verify that a candidate represents a stable fact, preference, habit, relationship, or ongoing goal rather than a one-off event.
+4. Run duplicate and conflict checks against existing `core` memories.
+5. Promote approved memories by changing their category to `core` and recording `promoted_at` and `promotion_reason` metadata.
+6. Add tests covering successful promotion, rejected temporary events, duplicates, conflicts, and threshold boundaries.
+
+Planned API: `consolidate_memories()` in `src/memory.py`, run on startup initially and later moved to a scheduled background task if needed.
 
 ## Planned Architecture
 
