@@ -4,9 +4,13 @@ A conversational AI agent with long-term memory that continuously learns from us
 
 ## Current Status
 
-**Phase 2 complete:** Core memory system fully working with categorisation, forgetting, and conflict resolution.
+**Phase 3 complete:** Multilingual UI, session-aware navigation, and a full memory dashboard.
+- Language selection overlay appears at the start of every new session (English, 中文, Deutsch).
+- Thumper responds in the chosen language throughout the conversation.
+- Memories page is fully translated; navigating to it and back preserves the chat session.
 - Thumper greets users on every session — introduces itself to new users, welcomes back returning ones by name.
 - Memories are split into `core` (permanent) and `episodic` (time-decay) categories.
+- Episodic memories resolve relative dates (today/tomorrow/yesterday and Chinese equivalents) at write time.
 - Conflicting memories (e.g. name changes) are automatically updated.
 - Next: memory consolidation — promote stable, repeatedly useful `episodic` memories to `core`.
 
@@ -35,7 +39,8 @@ A conversational AI agent with long-term memory that continuously learns from us
     ├── static/
     │   └── thumper.png     # Chatbot avatar
     └── templates/
-        └── index.html      # Chat UI
+        ├── index.html      # Chat UI (language picker + chat)
+        └── memories.html   # Memory dashboard (core + episodic)
 ```
 
 ## Getting Started
@@ -59,7 +64,9 @@ python3 app.py
 
 Then open **http://localhost:8080** in your browser.
 
-To inspect stored memories, open **http://localhost:8080/memories**.
+A language selection screen appears on the first load of each session. The chosen language is used for both the chat and the memories page.
+
+To inspect stored memories, click the **🧠 Memories** button in the chat header, or go to **http://localhost:8080/memories** directly.
 
 ## How Memory Works
 

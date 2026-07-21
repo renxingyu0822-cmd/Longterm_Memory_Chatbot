@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Memory Chatbot</title>
+  <title>Thumper</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -16,6 +16,73 @@
       height: 100vh;
     }
 
+    /* Language selection overlay */
+    .lang-overlay {
+      position: fixed;
+      inset: 0;
+      background: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .lang-overlay.hidden { display: none; }
+
+    .lang-card {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+      padding: 48px 40px;
+      text-align: center;
+      width: 360px;
+    }
+
+    .lang-card img {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-bottom: 20px;
+    }
+
+    .lang-card h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+
+    .lang-card p {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 32px;
+    }
+
+    .lang-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .lang-option {
+      padding: 14px;
+      background: #f0f2f5;
+      border: 2px solid transparent;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a2e;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .lang-option:hover {
+      background: #e4e6ea;
+      border-color: #1a1a2e;
+    }
+
+    /* Chat */
     .chat-container {
       width: 680px;
       height: 80vh;
@@ -161,13 +228,28 @@
   </style>
 </head>
 <body>
+
+  <!-- Language selection screen -->
+  <div class="lang-overlay" id="lang-overlay">
+    <div class="lang-card">
+      <img src="/static/thumper.png" alt="Thumper" />
+      <h1>Thumper</h1>
+      <p>Choose your language · 选择语言 · Sprache wählen</p>
+      <div class="lang-options">
+        <button class="lang-option" data-lang="en">🇬🇧 English</button>
+        <button class="lang-option" data-lang="zh">🇨🇳 中文</button>
+        <button class="lang-option" data-lang="de">🇩🇪 Deutsch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat -->
   <div class="chat-container">
     <div class="chat-header">
-      <div>Thumper <span>powered by GPT-4o-mini</span></div>
-      <a class="memory-btn" href="/memories" target="_blank">🧠 Memories</a>
+      <div>Thumper <span id="powered">powered by GPT-4o-mini</span></div>
+      <a class="memory-btn" id="memory-link" href="/memories">🧠 <span id="mem-label">Memories</span></a>
     </div>
-    <div class="messages" id="messages">
-    </div>
+    <div class="messages" id="messages"></div>
     <div class="input-area">
       <input id="input" type="text" placeholder="Type a message..." autofocus />
       <button id="send">Send</button>
@@ -178,12 +260,47 @@
     const messagesEl = document.getElementById("messages");
     const inputEl = document.getElementById("input");
     const sendBtn = document.getElementById("send");
+    const overlay = document.getElementById("lang-overlay");
 
-    function addMessage(text, role) {
+    const UI = {
+      en: { placeholder: "Type a message...", send: "Send", thinking: "Thinking...", memories: "Memories", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
+      zh: { placeholder: "输入消息...", send: "发送", thinking: "思考中...", memories: "记忆", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
+      de: { placeholder: "Nachricht eingeben...", send: "Senden", thinking: "Denke nach...", memories: "Erinnerungen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
+    };
+
+    let currentLang = sessionStorage.getItem("lang") || null;
+
+    function applyLang(lang) {
+      currentLang = lang;
+      sessionStorage.setItem("lang", lang);
+      const u = UI[lang];
+      inputEl.placeholder = u.placeholder;
+      sendBtn.textContent = u.send;
+      document.getElementById("powered").textContent = u.powered;
+      document.getElementById("mem-label").textContent = u.memories;
+      document.getElementById("memory-link").href = `/memories?lang=${lang}`;
+    }
+
+    document.querySelectorAll(".lang-option").forEach(btn => {
+      btn.addEventListener("click", () => {
+        applyLang(btn.dataset.lang);
+        overlay.classList.add("hidden");
+        sessionStorage.removeItem("chatLog");
+        greet();
+      });
+    });
+
+    // Session chat log
+    let chatLog = JSON.parse(sessionStorage.getItem("chatLog") || "[]");
+
+    function saveChatLog() {
+      sessionStorage.setItem("chatLog", JSON.stringify(chatLog));
+    }
+
+    function renderMessage(text, role) {
       const div = document.createElement("div");
       div.className = `message ${role}`;
       div.textContent = text;
-
       if (role === "bot") {
         const row = document.createElement("div");
         row.className = "bot-row";
@@ -197,17 +314,39 @@
       } else {
         messagesEl.appendChild(div);
       }
-
       messagesEl.scrollTop = messagesEl.scrollHeight;
       return div;
     }
 
+    function addMessage(text, role) {
+      chatLog.push({ type: "message", text, role });
+      saveChatLog();
+      return renderMessage(text, role);
+    }
+
     function addMemoryTag(memories) {
       if (!memories || memories.length === 0) return;
+      const label = `${UI[currentLang].remembered} ${memories.join(" · ")}`;
+      chatLog.push({ type: "tag", text: label });
+      saveChatLog();
       const div = document.createElement("div");
       div.className = "memory-tag";
-      div.textContent = `💾 Remembered: ${memories.join(" · ")}`;
+      div.textContent = label;
       messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function restoreChat() {
+      chatLog.forEach(entry => {
+        if (entry.type === "message") {
+          renderMessage(entry.text, entry.role);
+        } else {
+          const div = document.createElement("div");
+          div.className = "memory-tag";
+          div.textContent = entry.text;
+          messagesEl.appendChild(div);
+        }
+      });
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
@@ -227,7 +366,7 @@
       typingAvatar.alt = "Thumper";
       const typing = document.createElement("div");
       typing.className = "typing";
-      typing.textContent = "Thinking...";
+      typing.textContent = UI[currentLang].thinking;
       typingRow.appendChild(typingAvatar);
       typingRow.appendChild(typing);
       messagesEl.appendChild(typingRow);
@@ -237,15 +376,11 @@
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({ message: text, lang: currentLang }),
         });
         const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || "Something went wrong. Please try again.");
-        }
-        if (typeof data.response !== "string") {
-          throw new Error("The server returned an invalid response.");
-        }
+        if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+        if (typeof data.response !== "string") throw new Error("The server returned an invalid response.");
         typingRow.remove();
         addMessage(data.response, "bot");
         addMemoryTag(data.memories_saved);
@@ -259,9 +394,7 @@
     }
 
     sendBtn.addEventListener("click", sendMessage);
-    inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendMessage();
-    });
+    inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
 
     async function greet() {
       sendBtn.disabled = true;
@@ -273,13 +406,13 @@
       typingAvatar.alt = "Thumper";
       const typing = document.createElement("div");
       typing.className = "typing";
-      typing.textContent = "Thinking...";
+      typing.textContent = UI[currentLang].thinking;
       typingRow.appendChild(typingAvatar);
       typingRow.appendChild(typing);
       messagesEl.appendChild(typingRow);
 
       try {
-        const res = await fetch("/greet");
+        const res = await fetch(`/greet?lang=${currentLang}`);
         const data = await res.json();
         typingRow.remove();
         addMessage(data.response, "bot");
@@ -290,7 +423,18 @@
       inputEl.focus();
     }
 
-    greet();
+    // Show language picker on first load; skip if already chosen this session
+    if (!currentLang) {
+      overlay.classList.remove("hidden");
+    } else {
+      overlay.classList.add("hidden");
+      applyLang(currentLang);
+      if (chatLog.length > 0) {
+        restoreChat();
+      } else {
+        greet();
+      }
+    }
   </script>
 </body>
 </html>

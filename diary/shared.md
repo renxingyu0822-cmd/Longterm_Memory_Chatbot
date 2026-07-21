@@ -223,3 +223,17 @@ LLM Response
 - Duplicate core memories are not created.
 - Conflicting core memories follow the existing replacement policy.
 - Candidates below the configured thresholds remain episodic.
+
+---
+
+## 2026-07-21 — Language Picker + Session Navigation
+
+**What we built:**
+
+- Replaced the header language switcher with a full-screen overlay that appears at the start of every new session.
+  - The overlay shows Thumper's avatar, the title, and three language buttons (🇬🇧 English, 🇨🇳 中文, 🇩🇪 Deutsch).
+  - Language is stored in `sessionStorage` (not `localStorage`), so it persists within the same browser tab but resets when a new session starts.
+- Fixed the memories page navigation so it no longer breaks the chat:
+  - Removed `target="_blank"` from the Memories button — memories now open in the same tab.
+  - When the user returns via "← Back to chat", `sessionStorage` still holds both the language and the full chat log, so the conversation is restored exactly as left.
+- Result: users always choose a language at the start, and can freely switch between the chat and memory pages without losing context.
