@@ -74,3 +74,38 @@
 - Implement and evaluate `consolidate_memories()` using repeated mentions, access count, age, importance, and an LLM durability check.
 - Add a reliable project start/stop helper that keeps exactly one Flask process and cleans up its child process.
 - Exercise real conversations containing both stable user facts and dated plans to evaluate extraction quality and promotion thresholds.
+
+---
+
+## 2026-07-22 — Natural Chat Interaction Iteration
+
+**What I worked on:**
+
+- Proposed and iteratively refined a social-app-style conversation flow in which several short user messages can be sent before Thumper replies.
+- Chose a `0.8`-second quiet window after testing shorter timings, while keeping a 10-second maximum batch wait and a 10-message batch limit.
+- Requested that generated replies remain hidden while the user is actively typing and appear as soon as the input pauses or is sent.
+- Requested support for multiple assistant chat bubbles rather than forcing every batch into one large response; expanded the requested limit from two or three bubbles to as many as ten.
+- Requested faster perceived replies, leading to memory extraction and vector storage being moved out of the blocking chat-response path.
+- Refined the interface by removing the visible “Thinking...” indicator, adding a settings dialog, and simplifying its trigger to a gear-only icon.
+- Required English, Chinese, and German selections to stay consistent across the chat interface, assistant replies, settings dialog, and memory dashboard.
+- Started and exercised the local Flask application repeatedly, reported the browser's `ERR_CONNECTION_REFUSED` screenshot, and helped verify the corrected runtime behaviour.
+- Asked for today's work and code changes to be recorded in the personal and shared diaries.
+
+**Decisions made:**
+
+- Preserve the natural short-message buffer rather than replying immediately to every sentence.
+- Treat separate questions as separate reply bubbles while allowing fragments about the same topic to remain grouped.
+- Generate replies while the user types, but defer their visual delivery until the user pauses for `0.8` seconds or clears the input by sending.
+- Keep memory persistence asynchronous so it cannot delay the visible assistant reply.
+- Keep the settings button visually minimal while retaining localized tooltips and accessibility labels.
+
+**Blockers / questions:**
+
+- The local Flask server must run outside the restricted network sandbox to reach the OpenAI API.
+- On Windows, stopping the command task can leave a Python child process listening on port `8080`; the exact port owner must be checked before restart.
+
+**Next steps:**
+
+- Test real conversations with several rapidly entered questions and confirm the model chooses sensible bubble boundaries from one to ten replies.
+- Evaluate whether the `0.8`-second pause feels natural across desktop, mobile, and Chinese IME input.
+- Add a reliable development server start/stop command to eliminate stale Flask processes.

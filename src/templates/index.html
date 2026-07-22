@@ -129,6 +129,112 @@
 
     .memory-btn:hover { opacity: 1; }
 
+    #settings-button {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      padding: 0;
+      font-size: 15px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .settings-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(12, 13, 22, 0.48);
+      backdrop-filter: blur(5px);
+    }
+
+    .settings-overlay.hidden { display: none; }
+
+    .settings-card {
+      width: min(380px, 100%);
+      padding: 26px;
+      border-radius: 20px;
+      background: white;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.22);
+    }
+
+    .settings-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .settings-head h2 {
+      color: #1a1a2e;
+      font-size: 20px;
+    }
+
+    .settings-close {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 50%;
+      color: #606070;
+      background: #f0f2f5;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .settings-label {
+      margin-bottom: 10px;
+      color: #777785;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .settings-lang-options {
+      display: grid;
+      gap: 10px;
+    }
+
+    .settings-lang-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 13px 15px;
+      border: 1px solid #e5e5ea;
+      border-radius: 12px;
+      color: #1a1a2e;
+      background: white;
+      text-align: left;
+    }
+
+    .settings-lang-option::after {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border: 2px solid #c7c7cf;
+      border-radius: 50%;
+    }
+
+    .settings-lang-option.active {
+      border-color: #1a1a2e;
+      background: #f6f6f8;
+      font-weight: 700;
+    }
+
+    .settings-lang-option.active::after {
+      border-color: #1a1a2e;
+      background: #1a1a2e;
+      box-shadow: inset 0 0 0 2px #f6f6f8;
+    }
+
     .messages {
       flex: 1;
       overflow-y: auto;
@@ -225,6 +331,13 @@
       font-size: 14px;
       color: #888;
     }
+
+    @media (max-width: 520px) {
+      .chat-container { width: 100%; height: 100vh; border-radius: 0; }
+      .chat-header { padding: 14px 16px; }
+      .memory-btn { padding: 6px 9px; }
+      .chat-header span { margin-left: 4px; }
+    }
   </style>
 </head>
 <body>
@@ -243,11 +356,29 @@
     </div>
   </div>
 
+  <div class="settings-overlay hidden" id="settings-overlay">
+    <section class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="settings-head">
+        <h2 id="settings-title">Settings</h2>
+        <button class="settings-close" id="settings-close" type="button" aria-label="Close">×</button>
+      </div>
+      <p class="settings-label" id="settings-language-label">Language</p>
+      <div class="settings-lang-options">
+        <button class="settings-lang-option" type="button" data-settings-lang="en">🇬🇧 English</button>
+        <button class="settings-lang-option" type="button" data-settings-lang="zh">🇨🇳 中文</button>
+        <button class="settings-lang-option" type="button" data-settings-lang="de">🇩🇪 Deutsch</button>
+      </div>
+    </section>
+  </div>
+
   <!-- Chat -->
   <div class="chat-container">
     <div class="chat-header">
       <div>Thumper <span id="powered">powered by GPT-4o-mini</span></div>
-      <a class="memory-btn" id="memory-link" href="/memories">🧠 <span id="mem-label">Memories</span></a>
+      <div class="header-actions">
+        <a class="memory-btn" id="memory-link" href="/memories">🧠 <span id="mem-label">Memories</span></a>
+        <button class="memory-btn" id="settings-button" type="button" aria-label="Settings" title="Settings">⚙</button>
+      </div>
     </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
@@ -261,16 +392,21 @@
     const inputEl = document.getElementById("input");
     const sendBtn = document.getElementById("send");
     const overlay = document.getElementById("lang-overlay");
+    const settingsOverlay = document.getElementById("settings-overlay");
+    const settingsButton = document.getElementById("settings-button");
+    const settingsClose = document.getElementById("settings-close");
 
     const UI = {
-      en: { placeholder: "Type a message...", send: "Send", thinking: "Thinking...", memories: "Memories", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
-      zh: { placeholder: "输入消息...", send: "发送", thinking: "思考中...", memories: "记忆", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
-      de: { placeholder: "Nachricht eingeben...", send: "Senden", thinking: "Denke nach...", memories: "Erinnerungen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
+      en: { placeholder: "Type a message...", send: "Send", memories: "Memories", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
+      zh: { placeholder: "输入消息...", send: "发送", memories: "记忆", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
+      de: { placeholder: "Nachricht eingeben...", send: "Senden", memories: "Erinnerungen", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
     };
 
-    let currentLang = sessionStorage.getItem("lang") || null;
+    const savedLang = sessionStorage.getItem("lang");
+    let currentLang = savedLang && UI[savedLang] ? savedLang : null;
 
     function applyLang(lang) {
+      if (!UI[lang]) return;
       currentLang = lang;
       sessionStorage.setItem("lang", lang);
       const u = UI[lang];
@@ -278,14 +414,54 @@
       sendBtn.textContent = u.send;
       document.getElementById("powered").textContent = u.powered;
       document.getElementById("mem-label").textContent = u.memories;
+      settingsButton.setAttribute("aria-label", u.settings);
+      settingsButton.title = u.settings;
+      document.getElementById("settings-title").textContent = u.settingsTitle;
+      document.getElementById("settings-language-label").textContent = u.language;
+      settingsClose.setAttribute("aria-label", u.close);
       document.getElementById("memory-link").href = `/memories?lang=${lang}`;
+      document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
+      document.querySelectorAll(".settings-lang-option").forEach(option => {
+        const isActive = option.dataset.settingsLang === lang;
+        option.classList.toggle("active", isActive);
+        option.setAttribute("aria-pressed", String(isActive));
+      });
     }
+
+    function openSettings() {
+      settingsOverlay.classList.remove("hidden");
+      settingsClose.focus();
+    }
+
+    function closeSettings() {
+      settingsOverlay.classList.add("hidden");
+      settingsButton.focus();
+    }
+
+    settingsButton.addEventListener("click", openSettings);
+    settingsClose.addEventListener("click", closeSettings);
+    settingsOverlay.addEventListener("click", event => {
+      if (event.target === settingsOverlay) closeSettings();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && !settingsOverlay.classList.contains("hidden")) {
+        closeSettings();
+      }
+    });
+    document.querySelectorAll(".settings-lang-option").forEach(option => {
+      option.addEventListener("click", () => {
+        applyLang(option.dataset.settingsLang);
+        closeSettings();
+      });
+    });
 
     document.querySelectorAll(".lang-option").forEach(btn => {
       btn.addEventListener("click", () => {
         applyLang(btn.dataset.lang);
         overlay.classList.add("hidden");
         sessionStorage.removeItem("chatLog");
+        sessionStorage.removeItem("pendingReplyBatch");
+        pendingMessages = [];
         greet();
       });
     });
@@ -324,9 +500,9 @@
       return renderMessage(text, role);
     }
 
-    function addMemoryTag(memories) {
+    function addMemoryTag(memories, lang = currentLang) {
       if (!memories || memories.length === 0) return;
-      const label = `${UI[currentLang].remembered} ${memories.join(" · ")}`;
+      const label = `${UI[lang].remembered} ${memories.join(" · ")}`;
       chatLog.push({ type: "tag", text: label });
       saveChatLog();
       const div = document.createElement("div");
@@ -334,6 +510,25 @@
       div.textContent = label;
       messagesEl.appendChild(div);
       messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    async function rememberConversation(userMessages, assistantMessage, lang) {
+      try {
+        const res = await fetch("/remember", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_message: userMessages.join("\n"),
+            assistant_message: assistantMessage,
+            lang,
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        addMemoryTag(data.memories_saved, lang);
+      } catch (_error) {
+        // Memory storage should never delay or interrupt the visible reply.
+      }
     }
 
     function restoreChat() {
@@ -350,77 +545,173 @@
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    async function sendMessage() {
-      const text = inputEl.value.trim();
-      if (!text || sendBtn.disabled) return;
+    const QUIET_PERIOD_MS = 800;
+    const MAX_BATCH_WAIT_MS = 10000;
+    const MAX_MESSAGES_PER_BATCH = 10;
+    let replyTimer = null;
+    let responseInFlight = false;
+    let isComposing = false;
+    let lastInputAt = 0;
 
-      inputEl.value = "";
-      sendBtn.disabled = true;
-      addMessage(text, "user");
+    let pendingMessages = [];
+    let firstPendingAt = 0;
+    try {
+      const savedBatch = JSON.parse(sessionStorage.getItem("pendingReplyBatch") || "null");
+      if (savedBatch && Array.isArray(savedBatch.messages)) {
+        pendingMessages = savedBatch.messages.filter(message => typeof message === "string" && message.trim());
+        firstPendingAt = Number(savedBatch.firstPendingAt) || Date.now();
+        lastInputAt = Number(savedBatch.lastInputAt) || firstPendingAt;
+      }
+    } catch (_error) {
+      sessionStorage.removeItem("pendingReplyBatch");
+    }
 
-      const typingRow = document.createElement("div");
-      typingRow.className = "bot-row";
-      const typingAvatar = document.createElement("img");
-      typingAvatar.className = "bot-avatar";
-      typingAvatar.src = "/static/thumper.png";
-      typingAvatar.alt = "Thumper";
-      const typing = document.createElement("div");
-      typing.className = "typing";
-      typing.textContent = UI[currentLang].thinking;
-      typingRow.appendChild(typingAvatar);
-      typingRow.appendChild(typing);
-      messagesEl.appendChild(typingRow);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+    function savePendingBatch() {
+      if (pendingMessages.length === 0) {
+        sessionStorage.removeItem("pendingReplyBatch");
+        return;
+      }
+      sessionStorage.setItem("pendingReplyBatch", JSON.stringify({
+        messages: pendingMessages,
+        firstPendingAt,
+        lastInputAt,
+      }));
+    }
+
+    function scheduleReply() {
+      clearTimeout(replyTimer);
+      replyTimer = null;
+      if (responseInFlight || pendingMessages.length === 0) return;
+
+      const now = Date.now();
+      const maxWaitRemaining = MAX_BATCH_WAIT_MS - (now - firstPendingAt);
+      const quietTimeRemaining = QUIET_PERIOD_MS - (now - lastInputAt);
+      const userHasDraft = isComposing || inputEl.value.trim().length > 0;
+
+      if (maxWaitRemaining <= 0 || (!userHasDraft && quietTimeRemaining <= 0)) {
+        dispatchPendingMessages();
+        return;
+      }
+
+      const nextCheck = userHasDraft
+        ? Math.min(maxWaitRemaining, 500)
+        : Math.min(maxWaitRemaining, quietTimeRemaining);
+      replyTimer = setTimeout(scheduleReply, Math.max(50, nextCheck));
+    }
+
+    function waitUntilUserStopsTyping() {
+      return new Promise(resolve => {
+        function checkTypingState() {
+          const hasDraft = inputEl.value.trim().length > 0;
+          const quietTimeRemaining = QUIET_PERIOD_MS - (Date.now() - lastInputAt);
+
+          if (!isComposing && (!hasDraft || quietTimeRemaining <= 0)) {
+            resolve();
+            return;
+          }
+
+          const nextCheck = isComposing
+            ? 100
+            : Math.max(50, Math.min(quietTimeRemaining, 200));
+          setTimeout(checkTypingState, nextCheck);
+        }
+
+        checkTypingState();
+      });
+    }
+
+    async function dispatchPendingMessages() {
+      if (responseInFlight || pendingMessages.length === 0) return;
+
+      clearTimeout(replyTimer);
+      replyTimer = null;
+      responseInFlight = true;
+      const batch = pendingMessages.splice(0, MAX_MESSAGES_PER_BATCH);
+      const batchLang = currentLang;
+      firstPendingAt = pendingMessages.length > 0 ? Date.now() : 0;
+      savePendingBatch();
 
       try {
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, lang: currentLang }),
+          body: JSON.stringify({ messages: batch, lang: batchLang }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
-        if (typeof data.response !== "string") throw new Error("The server returned an invalid response.");
-        typingRow.remove();
-        addMessage(data.response, "bot");
-        addMemoryTag(data.memories_saved);
+        const replies = Array.isArray(data.responses)
+          ? data.responses.filter(reply => typeof reply === "string" && reply.trim()).slice(0, 10)
+          : (typeof data.response === "string" ? [data.response] : []);
+        if (replies.length === 0) throw new Error("The server returned an invalid response.");
+
+        for (let index = 0; index < replies.length; index += 1) {
+          await waitUntilUserStopsTyping();
+          addMessage(replies[index], "bot");
+          if (index < replies.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 180));
+          }
+        }
+        void rememberConversation(batch, replies.join("\n"), batchLang);
       } catch (e) {
-        typingRow.remove();
         addMessage(e.message || "Something went wrong. Please try again.", "bot");
       } finally {
-        sendBtn.disabled = false;
+        responseInFlight = false;
         inputEl.focus();
+        scheduleReply();
       }
     }
 
+    function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text || sendBtn.disabled) return;
+
+      inputEl.value = "";
+      addMessage(text, "user");
+      const now = Date.now();
+      if (pendingMessages.length === 0) firstPendingAt = now;
+      pendingMessages.push(text);
+      lastInputAt = now;
+      savePendingBatch();
+      scheduleReply();
+      inputEl.focus();
+    }
+
     sendBtn.addEventListener("click", sendMessage);
-    inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
+    inputEl.addEventListener("input", () => {
+      lastInputAt = Date.now();
+      savePendingBatch();
+      scheduleReply();
+    });
+    inputEl.addEventListener("compositionstart", () => {
+      isComposing = true;
+      lastInputAt = Date.now();
+      scheduleReply();
+    });
+    inputEl.addEventListener("compositionend", () => {
+      isComposing = false;
+      lastInputAt = Date.now();
+      savePendingBatch();
+      scheduleReply();
+    });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.isComposing && !isComposing) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
 
     async function greet() {
       sendBtn.disabled = true;
-      const typingRow = document.createElement("div");
-      typingRow.className = "bot-row";
-      const typingAvatar = document.createElement("img");
-      typingAvatar.className = "bot-avatar";
-      typingAvatar.src = "/static/thumper.png";
-      typingAvatar.alt = "Thumper";
-      const typing = document.createElement("div");
-      typing.className = "typing";
-      typing.textContent = UI[currentLang].thinking;
-      typingRow.appendChild(typingAvatar);
-      typingRow.appendChild(typing);
-      messagesEl.appendChild(typingRow);
 
       try {
         const res = await fetch(`/greet?lang=${currentLang}`);
         const data = await res.json();
-        typingRow.remove();
         addMessage(data.response, "bot");
       } catch (e) {
-        typingRow.remove();
       }
       sendBtn.disabled = false;
       inputEl.focus();
+      scheduleReply();
     }
 
     // Show language picker on first load; skip if already chosen this session
@@ -431,6 +722,7 @@
       applyLang(currentLang);
       if (chatLog.length > 0) {
         restoreChat();
+        scheduleReply();
       } else {
         greet();
       }

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ copy.html_lang }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Thumper · 记忆库</title>
+  <title>{{ copy.page_title }}</title>
   <style>
     :root {
       color-scheme: light;
@@ -276,24 +276,24 @@
 </head>
 <body>
   <main class="shell">
-    <nav class="topbar" aria-label="页面导航">
+    <nav class="topbar" aria-label="{{ copy.nav_label }}">
       <div class="brand"><span class="brand-mark">T</span> Thumper</div>
-      <a class="back-link" href="/">← 返回聊天</a>
+      <a class="back-link" href="/">{{ copy.back }}</a>
     </nav>
 
     <header class="hero">
       <div>
-        <p class="eyebrow">Memory archive</p>
-        <h1>记忆库</h1>
-        <p class="subtitle">长期记忆塑造持续的了解，短期记忆保留眼前的事件。两类记忆共同帮助 Thumper 更自然地延续每一次对话。</p>
+        <p class="eyebrow">{{ copy.eyebrow }}</p>
+        <h1>{{ copy.heading }}</h1>
+        <p class="subtitle">{{ copy.subtitle }}</p>
       </div>
-      <div class="total"><strong>{{ total }}</strong><span>条记忆</span></div>
+      <div class="total"><strong>{{ total }}</strong><span>{{ copy.total_unit }}</span></div>
     </header>
 
     {% if is_demo %}
       <div class="demo-banner">
-        <span>当前展示的是示例数据，不会写入你的真实记忆库。</span>
-        <a href="/memories">查看真实记忆</a>
+        <span>{{ copy.demo_notice }}</span>
+        <a href="/memories?lang={{ lang }}">{{ copy.view_real }}</a>
       </div>
     {% endif %}
 
@@ -302,7 +302,7 @@
         <header class="section-head">
           <div class="section-title">
             <span class="section-icon" aria-hidden="true">◆</span>
-            <div><h2>长期记忆</h2><p class="section-copy">核心信息 · 永久保留</p></div>
+            <div><h2>{{ copy.core_heading }}</h2><p class="section-copy">{{ copy.core_copy }}</p></div>
           </div>
           <span class="count">{{ core_memories|length }}</span>
         </header>
@@ -312,14 +312,14 @@
               <article class="memory-card">
                 <p class="memory-text">{{ item.text }}</p>
                 <div class="meta-row">
-                  <span class="score"><span>重要度 {{ item.importance_percent|default(0) }}%</span><span class="score-track"><span class="score-fill" style="width: 0%;" data-width="{{ item.importance_percent|default(0) }}"></span></span></span>
-                  <span class="memory-type">不会遗忘</span>
+                  <span class="score"><span>{{ copy.importance }} {{ item.importance_percent|default(0) }}%</span><span class="score-track"><span class="score-fill" style="width: 0%;" data-width="{{ item.importance_percent|default(0) }}"></span></span></span>
+                  <span class="memory-type">{{ copy.permanent }}</span>
                 </div>
               </article>
             {% endfor %}
           </div>
         {% else %}
-          <div class="empty"><strong>还没有长期记忆</strong>告诉 Thumper 你的名字、喜好或长期目标。</div>
+          <div class="empty"><strong>{{ copy.core_empty_heading }}</strong>{{ copy.core_empty_copy }}</div>
         {% endif %}
       </section>
 
@@ -327,7 +327,7 @@
         <header class="section-head">
           <div class="section-title">
             <span class="section-icon" aria-hidden="true">◷</span>
-            <div><h2>短期记忆</h2><p class="section-copy">近期事件 · 随时间衰减</p></div>
+            <div><h2>{{ copy.episodic_heading }}</h2><p class="section-copy">{{ copy.episodic_copy }}</p></div>
           </div>
           <span class="count">{{ episodic_memories|length }}</span>
         </header>
@@ -337,17 +337,17 @@
               <article class="memory-card">
                 <p class="memory-text">{{ item.text }}</p>
                 <div class="meta-row">
-                  <span class="score"><span>重要度 {{ item.importance_percent|default(0) }}%</span><span class="score-track"><span class="score-fill" style="width: 0%;" data-width="{{ item.importance_percent|default(0) }}"></span></span></span>
-                  <span class="memory-type">{% if item.event_date %}{{ item.event_date }}{% else %}会衰减{% endif %}</span>
+                  <span class="score"><span>{{ copy.importance }} {{ item.importance_percent|default(0) }}%</span><span class="score-track"><span class="score-fill" style="width: 0%;" data-width="{{ item.importance_percent|default(0) }}"></span></span></span>
+                  <span class="memory-type">{% if item.event_date %}{{ item.event_date }}{% else %}{{ copy.decays }}{% endif %}</span>
                 </div>
               </article>
             {% endfor %}
           </div>
         {% else %}
           <div class="empty">
-            <strong>还没有短期记忆</strong>
-            临时计划和近期事件会出现在这里。
-            {% if not is_demo and total == 0 %}<br><a class="demo-link" href="/memories?demo=1">查看完整示例</a>{% endif %}
+            <strong>{{ copy.episodic_empty_heading }}</strong>
+            {{ copy.episodic_empty_copy }}
+            {% if not is_demo and total == 0 %}<br><a class="demo-link" href="/memories?demo=1&amp;lang={{ lang }}">{{ copy.view_demo }}</a>{% endif %}
           </div>
         {% endif %}
       </section>

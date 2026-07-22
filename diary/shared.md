@@ -237,3 +237,49 @@ LLM Response
   - Removed `target="_blank"` from the Memories button — memories now open in the same tab.
   - When the user returns via "← Back to chat", `sessionStorage` still holds both the language and the full chat log, so the conversation is restored exactly as left.
 - Result: users always choose a language at the start, and can freely switch between the chat and memory pages without losing context.
+
+---
+
+## 2026-07-22 — Buffered Messaging, Multi-Bubble Replies + Localization
+
+**Natural chat timing:**
+
+- Replaced the one-request-per-send browser flow with a pending-message queue stored in `sessionStorage`.
+- Users can send several short messages without the send button being disabled. Messages are batched after a `0.8`-second quiet period, with a 10-second maximum wait and a maximum of 10 messages per request.
+- Added input and composition-event handling so Chinese IME selection does not accidentally send a message.
+- If a model response finishes while the user is typing, the response is held until the input is sent or no input event has occurred for `0.8` seconds.
+- Removed the visible “Thinking...” bubble. Completed responses now appear directly at the appropriate delivery time.
+
+**Multiple assistant bubbles:**
+
+- Added strict JSON Schema Structured Outputs to the `gpt-4o-mini` Chat Completions request.
+- The model now returns `1–10` ordered reply bubbles. It is instructed to split distinct questions or topics while keeping related sentence fragments together and avoiding repeated information.
+- `/chat` returns both a backward-compatible combined `response` and an ordered `responses` array.
+- The browser renders each reply as a separate bot bubble, checks the user's typing state before every bubble, and uses a short inter-bubble delay for a natural chat rhythm.
+- Conversation history and memory extraction receive the complete ordered reply content joined with newlines.
+
+**Response latency and memory persistence:**
+
+- Moved memory extraction and embedding storage out of the blocking `/chat` path.
+- Added `POST /remember`; the browser calls it after displaying the assistant response and adds the localized “Remembered” tag when storage completes.
+- A slow or failed memory-storage request no longer delays or interrupts the visible reply.
+
+**Language and settings:**
+
+- Added a gear-only settings button beside the Memories button. Its modal supports English, Simplified Chinese, and German without clearing the active conversation.
+- Language changes immediately update chat controls, accessibility labels, the memory-page link, and the system instruction used for future assistant replies.
+- Localized the entire memory dashboard, including headings, navigation, empty states, retention labels, demo notices, and demo memories.
+- Memory and demo links preserve the selected `lang` value; stored real-memory text remains in its original language to avoid semantic changes from display-time translation.
+
+**Backend and validation:**
+
+- `/chat` accepts either the legacy `message` string or a validated `messages` array of up to 10 non-empty strings.
+- Added validation for structured model output, reply counts, and the new `/remember` request body.
+- Preserved safe conversation-history updates: invalid, empty, or malformed model output does not add a partial turn.
+- Expanded the automated suite to 18 passing `unittest` tests covering batching, strict structured-output configuration, multiple replies, invalid structured responses, asynchronous memory storage, settings markup, and three-language memory pages.
+
+**Runtime notes:**
+
+- Diagnosed `ERR_CONNECTION_REFUSED` as an exited Flask process and a later `500` as sandbox-blocked outbound API networking (`WinError 10013`).
+- Restarted Flask with network permission and repeatedly verified `HTTP 200` responses.
+- Removed stale duplicate Python listeners on port `8080` before each verified restart.
