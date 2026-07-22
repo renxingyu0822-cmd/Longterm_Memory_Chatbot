@@ -4,15 +4,17 @@ A conversational AI agent with long-term memory that continuously learns from us
 
 ## Current Status
 
-**Phase 3 complete:** Multilingual UI, session-aware navigation, and a full memory dashboard.
-- Language selection overlay appears at the start of every new session (English, 中文, Deutsch).
-- Thumper responds in the chosen language throughout the conversation.
-- Memories page is fully translated; navigating to it and back preserves the chat session.
-- Thumper greets users on every session — introduces itself to new users, welcomes back returning ones by name.
-- Memories are split into `core` (permanent) and `episodic` (time-decay) categories.
-- Episodic memories resolve relative dates (today/tomorrow/yesterday and Chinese equivalents) at write time.
-- Conflicting memories (e.g. name changes) are automatically updated.
-- Next: memory consolidation — promote stable, repeatedly useful `episodic` memories to `core`.
+**Phase 5 complete:** Conversation timing overhauled and reply polish applied.
+
+- **Deterministic reply hold:** After the LLM returns a reply, Thumper waits a silent 0.5 s, then holds until the user has been idle for 5 s (empty input) or 20 s (input has draft text) before showing the response. No more random cut-ins.
+- **Silent WAIT state:** When the LLM decides to wait for more context, nothing is shown — no typing indicator, no message. The send button stays enabled. A nudge fires after 60 s of silence.
+- **Typing indicator only on actual replies:** The "Typing…" bubble now appears inside `showBlocks` immediately before each reply bubble, so it never flashes and disappears during WAIT or LLM processing.
+- **No lost messages:** Messages sent while a reply is being processed are preserved in the buffer and trigger their own follow-up callChat, preventing questions from being silently dropped or deferred across rounds.
+- **Trailing question suppression:** A `drop_trailing_question()` post-processing step removes standalone question bubbles that the LLM tacks on to every response, backed by a strengthened system prompt.
+- **ACTION prefix robustness:** The backend regex now catches Chinese-translated variants of `ACTION: WAIT/REPLY` (`行动：等待` etc.) so they are never shown as raw text in the chat.
+- **Settings overlay:** Gear button opens a language-switcher modal mid-conversation without clearing the chat log.
+- Message batching (800 ms debounce), `callChatInProgress` mutex, multi-bubble replies, and the full memory system remain in place from Phase 4.
+- Next: memory consolidation — promote stable, repeatedly accessed `episodic` memories to `core`.
 
 ## Tech Stack
 

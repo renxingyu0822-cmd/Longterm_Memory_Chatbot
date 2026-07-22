@@ -203,6 +203,68 @@ LLM Response
 
 ---
 
+## 2026-07-22 — Natural Conversation Timing
+
+**Goal:** Make the conversation feel more like real texting — the bot waits for the user to finish a thought before replying, batches rapid messages, and never interrupts mid-composition.
+
+**Multi-message batching (dafei):**
+- `sendMessage()` no longer calls `callChat()` directly. Instead, a debounce timer fires 800ms after the last sent message, so rapid follow-up messages are accumulated in `messageBuffer` before the LLM sees them.
+- An `input` event listener also resets the timer on every keystroke, so if the user is composing a follow-up message, the LLM call is pushed back further.
+- Updated `_MULTI_MSG_INSTRUCTION` in `app.py` to include Chinese WAIT triggers ("你知道吗", "猜猜怎么了", "哎", etc.) and fixed the KEY RULE that mistakenly treated all questions as REPLY — lead-in rhetorical questions like "you know what?" and "你知道吗" now correctly trigger WAIT.
+- Added Chinese and German examples to the WAIT/REPLY prompt.
+
+**Reply timing — stochastic idle detection (dafei):**
+- Added `lastKeystrokeAt` timestamp, updated on every `input` event.
+- `isUserDoneTyping()` returns `true` when:
+  - Input box is empty **and** idle for ≥ 5 seconds, **or**
+  - Input box has unsubmitted text **and** idle for ≥ 35 seconds (5s + 30s thinking grace period).
+- `waitForUserToFinish()` polls every 200ms until `isUserDoneTyping()` is true, with a 60s safety cap.
+- When the LLM returns ACTION: REPLY but the user is still composing: **70% of the time** Thumper waits for the user to finish; **30% of the time** it cuts in naturally (like a friend who speaks up mid-thought).
+- Nudge always waits for the user to finish before appearing.
+
+**Concurrency fix — `callChatInProgress` mutex:**
+- Introduced a boolean mutex so only one `callChat` can run at a time.
+- The send button is re-enabled immediately after the LLM returns REPLY (before the animation starts), so the user can start typing the next message while blocks animate.
+- If `callChat` is triggered while animation is still running, it reschedules itself every 500ms and proceeds once the animation completes — no duplicate responses.
+
+**Nudge no longer locks the user out:**
+- `callNudge()` no longer disables the send button or changes `chatState`.
+- If the user sends a message while a nudge is in flight, the nudge response is silently discarded and `callChat` handles the new message.
+- Nudge is skipped entirely if the user already has text in the input box when the 20s timer fires.
+
+**UX polish:**
+- "Thinking..." renamed to "Typing..." (正在输入... / Tippt...) across all three languages.
+
+---
+
+## 2026-07-22 — Conversation Timing Overhaul + Reply Polish
+
+**Merge conflict resolution (dafei):**
+- Resolved three-way merge conflict between dafei's natural-timing commit and IMMFlight's multi-bubble/settings refactor across `src/app.py`, `src/templates/index.html`, and `src/templates/memories.html`.
+- Kept dafei's WAIT/REPLY text-based action parsing, stochastic hold, nudge, and `callChatInProgress` mutex; integrated IMMFlight's settings gear overlay, `/remember` async endpoint, `_MEMORY_PAGE_COPY` localisation dict, and `_chat_language()` helper.
+- Merged `UI` object in the frontend to carry both the `thinking` key (dafei) and the settings keys (`settings`, `settingsTitle`, `language`, `close`) (IMMFlight).
+
+**Reply timing redesign (dafei):**
+- Removed the stochastic 30/70 cut-in. Reply timing is now fully deterministic.
+- After receiving a REPLY from the LLM, the frontend waits a silent 0.5 s, then polls:
+  - Input box has content → wait until 20 s of keyboard idle before showing the reply.
+  - Input box empty → wait until 5 s of keyboard idle.
+- The "Typing…" indicator now only appears inside `showBlocks` immediately before each bubble, so it is never shown during the LLM processing phase or during WAIT state — no more flash-and-disappear.
+- WAIT state is fully silent: no indicator, send button re-enabled immediately, nudge timer extended from 20 s to 60 s.
+
+**Message buffer fix:**
+- Changed `messageBuffer = []` to `messageBuffer.splice(0, snapshot.length)` in the REPLY branch. Messages that arrive while a callChat is in flight are now preserved in the buffer instead of being silently discarded, preventing questions from being "serialised" into a later conversation round.
+
+**ACTION prefix robustness:**
+- Updated the backend regex to also match Chinese-translated variants (`行动：等待`, `行动:回复`, etc.) as a fallback, preventing them from leaking into the chat as raw text.
+- Added a `CRITICAL` line to `_MULTI_MSG_INSTRUCTION` requiring the ACTION prefix to always be written in English regardless of reply language.
+
+**Trailing question suppression:**
+- Added `drop_trailing_question(blocks)` in `app.py`: if the last bubble is a standalone question, it is removed before the response is returned. Applies whenever there is at least one non-question block remaining.
+- Strengthened the system prompt to explicitly discourage ending every reply with a question.
+
+---
+
 ## 2026-07-22 — Next Plan: Short-Term to Long-Term Consolidation
 
 **Status:** Planned, not implemented.

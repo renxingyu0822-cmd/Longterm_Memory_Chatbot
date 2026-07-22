@@ -1,9 +1,91 @@
+import re
 import json
 from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 from dotenv import load_dotenv
+
+_LANG_NAMES = {
+    "en": "English",
+    "zh": "Chinese (Mandarin)",
+    "de": "German",
+}
+
+_LANG_INSTRUCTION = {
+    "en": "IMPORTANT: You MUST respond in English only. Do not use any other language, even if the conversation history contains messages in another language.",
+    "zh": "重要：你必须只用中文回复。无论对话历史中有任何其他语言的内容，都不得使用其他语言。",
+    "de": "WICHTIG: Du MUSST ausschließlich auf Deutsch antworten. Verwende keine andere Sprache, auch wenn der Gesprächsverlauf Nachrichten in einer anderen Sprache enthält.",
+}
+
+_MEMORY_UI = {
+    "en": {
+        "title": "Memory Bank",
+        "back": "← Back to chat",
+        "eyebrow": "Memory archive",
+        "heading": "Memory Bank",
+        "subtitle": "Long-term memories build a lasting understanding of you. Short-term memories capture recent events. Together they help Thumper pick up every conversation naturally.",
+        "memories_count": "memories",
+        "demo_note": "This is sample data — nothing here has been written to your real memory bank.",
+        "demo_link": "View real memories",
+        "core_title": "Long-term Memory",
+        "core_copy": "Core facts · Kept forever",
+        "core_empty_title": "No long-term memories yet",
+        "core_empty_body": "Tell Thumper your name, preferences, or long-term goals.",
+        "episodic_title": "Short-term Memory",
+        "episodic_copy": "Recent events · Fades over time",
+        "episodic_empty_title": "No short-term memories yet",
+        "episodic_empty_body": "Temporary plans and recent events will appear here.",
+        "importance": "Importance",
+        "never_forgotten": "Never forgotten",
+        "will_fade": "Will fade",
+        "view_demo": "View a demo",
+    },
+    "zh": {
+        "title": "记忆库",
+        "back": "← 返回聊天",
+        "eyebrow": "记忆存档",
+        "heading": "记忆库",
+        "subtitle": "长期记忆塑造持续的了解，短期记忆保留眼前的事件。两类记忆共同帮助 Thumper 更自然地延续每一次对话。",
+        "memories_count": "条记忆",
+        "demo_note": "当前展示的是示例数据，不会写入你的真实记忆库。",
+        "demo_link": "查看真实记忆",
+        "core_title": "长期记忆",
+        "core_copy": "核心信息 · 永久保留",
+        "core_empty_title": "还没有长期记忆",
+        "core_empty_body": "告诉 Thumper 你的名字、喜好或长期目标。",
+        "episodic_title": "短期记忆",
+        "episodic_copy": "近期事件 · 随时间衰减",
+        "episodic_empty_title": "还没有短期记忆",
+        "episodic_empty_body": "临时计划和近期事件会出现在这里。",
+        "importance": "重要度",
+        "never_forgotten": "不会遗忘",
+        "will_fade": "会衰减",
+        "view_demo": "查看完整示例",
+    },
+    "de": {
+        "title": "Gedächtnisbank",
+        "back": "← Zurück zum Chat",
+        "eyebrow": "Gedächtnisarchiv",
+        "heading": "Gedächtnisbank",
+        "subtitle": "Langzeitgedächtnisse bauen ein dauerhaftes Verständnis von dir auf. Kurzzeitgedächtnisse erfassen aktuelle Ereignisse. Gemeinsam helfen sie Thumper, jedes Gespräch natürlich fortzusetzen.",
+        "memories_count": "Erinnerungen",
+        "demo_note": "Dies sind Beispieldaten — nichts davon wurde in deine echte Gedächtnisbank geschrieben.",
+        "demo_link": "Echte Erinnerungen anzeigen",
+        "core_title": "Langzeitgedächtnis",
+        "core_copy": "Kernfakten · Für immer gespeichert",
+        "core_empty_title": "Noch keine Langzeitgedächtnisse",
+        "core_empty_body": "Erzähl Thumper deinen Namen, deine Vorlieben oder langfristige Ziele.",
+        "episodic_title": "Kurzzeitgedächtnis",
+        "episodic_copy": "Aktuelle Ereignisse · Verblasst mit der Zeit",
+        "episodic_empty_title": "Noch keine Kurzzeitgedächtnisse",
+        "episodic_empty_body": "Vorübergehende Pläne und aktuelle Ereignisse erscheinen hier.",
+        "importance": "Wichtigkeit",
+        "never_forgotten": "Nie vergessen",
+        "will_fade": "Wird verblassen",
+        "view_demo": "Demo ansehen",
+    },
+}
 
 load_dotenv()
 
@@ -30,7 +112,8 @@ Getting to know the user:
 - If you don't know the user's name, find a natural moment early in the conversation to ask.
 - If you don't know their gender or preferred pronouns, pick it up from context or ask casually when it feels right.
 - Other useful things to learn over time: what they do, where they're from, their interests, age group.
-- Never ask multiple questions at once — one thing at a time, woven naturally into the conversation. Don't make it feel like a form."""
+- Never ask multiple questions at once — one thing at a time, woven naturally into the conversation. Don't make it feel like a form.
+- IMPORTANT: Do NOT end your reply with a question every time. Most replies should end with a statement, reaction, or opinion — not a question. Only ask something when you are genuinely curious and it feels completely natural. Ending every message with a question feels robotic and annoying."""
 
 _MEMORY_PAGE_COPY = {
     "en": {
@@ -107,43 +190,103 @@ _MEMORY_PAGE_COPY = {
     },
 }
 
-_LANGUAGE_INSTRUCTIONS = {
-    "en": "Reply in English unless the user explicitly asks for another language.",
-    "zh": "Use natural Simplified Chinese for every reply unless the user explicitly asks for another language.",
-    "de": "Reply in natural German unless the user explicitly asks for another language.",
-}
-
-_REPLY_BUBBLES_INSTRUCTION = """Choose how many chat bubbles the reply needs.
-- Usually return one concise bubble.
-- When the buffered user messages contain distinct questions or topics that are clearer answered separately, return a separate bubble for each, in the same order.
-- Keep closely related follow-up fragments together instead of mechanically creating one bubble per user message.
-- Return at most ten bubbles and do not repeat information across them."""
-
-_REPLY_BUBBLES_FORMAT = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "chat_bubbles",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "replies": {
-                    "type": "array",
-                    "description": "One to ten natural chat bubbles, in display order.",
-                    "items": {"type": "string"},
-                    "minItems": 1,
-                    "maxItems": 10,
-                }
-            },
-            "required": ["replies"],
-            "additionalProperties": False,
-        },
-    },
-}
-
 
 def _chat_language(value):
-    return value if value in _LANGUAGE_INSTRUCTIONS else "en"
+    return value if value in _LANG_INSTRUCTION else "en"
+
+
+_MULTI_MSG_INSTRUCTION = """
+MULTI-MESSAGE HANDLING:
+Users sometimes send thoughts as quick bursts. Judge whether the user is mid-thought or has said enough to respond.
+
+Begin your response with exactly one of:
+  ACTION: WAIT    — ONLY when the message is a bare lead-in with clearly more coming. These are rhetorical openers, not real questions — the user is dangling a hook.
+  ACTION: REPLY   — whenever the user has said something with actual content. Default to this. When in doubt, reply.
+
+CRITICAL: The ACTION prefix must ALWAYS be written in English — "ACTION: WAIT" or "ACTION: REPLY" — regardless of what language you are replying in. Never translate it.
+
+WAIT triggers (bare hooks with no real content):
+  English: "hi", "hey", "you know what?", "guess what", "omg", "so,", a lone emoji
+  Chinese: "你知道吗", "猜猜怎么了", "你猜怎么着", "哎", "诶", "哦对了", lone "哈哈"
+  German: "weißt du was", "rate mal", lone "ey"
+
+KEY RULE — always use ACTION: REPLY for:
+  • Any greeting with a time-of-day word ("good morning", "晚上好", "guten morgen")
+  • Any message that addresses you by name ("hi thumper", "嗨 thumper")
+  • Any statement of feeling, fact, or event ("i'm tired", "刚到家", "ich bin müde")
+  • Any question with actual content ("what do you think about X?", "你觉得X怎么样?")
+  • Multiple buffered messages where the latest adds real content beyond the opener
+
+When a message contains multiple lines, treat each line as a separate text — judge them together.
+Write your reply as natural prose. Do not use any separators — the splitting is handled automatically.
+
+Examples:
+  "hi" → ACTION: WAIT
+  "you know what?" → ACTION: WAIT
+  "你知道吗" → ACTION: WAIT
+  "猜猜怎么了" → ACTION: WAIT
+  "good morning!" → ACTION: REPLY\\nMorning! How's it going?
+  "i'm tired" → ACTION: REPLY\\nAw, rough day?
+  "你好呀" → ACTION: REPLY\\n嗨！怎么了？
+  "hi\\nyou know what?\\ni ran into my high school teacher" → ACTION: REPLY\\nNo way! Did you two actually talk?
+  "你知道吗\\n我今天遇见了我的高中老师" → ACTION: REPLY\\n真的假的！你们说话了吗？
+"""
+
+
+# Splits on English sentence ends (punct + space) OR CJK sentence ends (no space needed)
+_SENT_RE = re.compile(r'(?<=[.!?])\s+|(?<=[。！？])')
+
+
+def split_into_blocks(text: str) -> list[str]:
+    """Split a reply into 1–3 natural chat message blocks (English + CJK aware)."""
+    sentences = [s.strip() for s in _SENT_RE.split(text.strip()) if s.strip()]
+
+    if len(sentences) <= 1:
+        return [text.strip()]
+
+    # CJK text has no spaces between sentences; English needs a space when re-joining
+    is_cjk = any('一' <= c <= '鿿' for c in text)
+    join = (lambda parts: ''.join(parts)) if is_cjk else (lambda parts: ' '.join(parts))
+
+    def is_q(s: str) -> bool:
+        return s.endswith(('?', '？'))
+
+    def is_short_exclaim(s: str) -> bool:
+        # ≤5 space-separated tokens (English) OR ≤10 chars total (CJK)
+        return s.endswith(('!', '！')) and (len(s.split()) <= 5 or len(s) <= 10)
+
+    # Rule 1: short exclamatory opener → its own first block
+    if is_short_exclaim(sentences[0]):
+        opener, rest = sentences[0], sentences[1:]
+        if not rest:
+            return [opener]
+        # Split a trailing question off into a third block if there's content before it
+        if len(rest) >= 2 and is_q(rest[-1]):
+            return [opener, join(rest[:-1]), rest[-1]]
+        return [opener, join(rest)]
+
+    # Rule 2: split before the FIRST question that has statement content before it
+    for i, s in enumerate(sentences):
+        if is_q(s) and i > 0:
+            return [join(sentences[:i]), join(sentences[i:])]
+
+    # Rule 3: 3+ non-question sentences → split at midpoint
+    if len(sentences) >= 3:
+        mid = len(sentences) // 2
+        return [join(sentences[:mid]), join(sentences[mid:])]
+
+    # Rule 4: exactly 2 sentences → two blocks
+    return [sentences[0], sentences[1]]
+
+
+def drop_trailing_question(blocks: list[str]) -> list[str]:
+    """Remove the last block if it is purely a question, keeping at least one block."""
+    if len(blocks) <= 1:
+        return blocks
+    last = blocks[-1].strip()
+    if last.endswith(('?', '？')):
+        return blocks[:-1]
+    return blocks
 
 
 @app.route("/")
@@ -215,6 +358,10 @@ def memories():
     core = [entry for entry in entries if entry["category"] == "core"]
     episodic = [entry for entry in entries if entry["category"] != "core"]
 
+    lang = request.args.get("lang", "en")
+    if lang not in _MEMORY_UI:
+        lang = "en"
+
     return render_template(
         "memories.html",
         core_memories=core,
@@ -226,9 +373,17 @@ def memories():
     )
 
 
+@app.route("/reset", methods=["POST"])
+def reset():
+    conversation_history.clear()
+    return jsonify({"ok": True})
+
+
 @app.route("/greet")
 def greet():
     lang = _chat_language(request.args.get("lang"))
+    lang_note = _LANG_INSTRUCTION[lang]
+
     is_first_meeting = memory.collection.count() == 0
     if is_first_meeting:
         prompt = "This is your first time meeting this user. Greet them warmly, introduce yourself as Thumper, and ask for their name. One or two sentences max."
@@ -243,13 +398,11 @@ def greet():
         facts_block = "\n".join(f"- {f}" for f in core_facts[:5]) if core_facts else ""
         prompt = f"Welcome back the user like a friend you already know. Keep it short and casual — one or two sentences. Don't list what you know; just greet them naturally.{chr(10) + 'What you know: ' + chr(10) + facts_block if facts_block else ''}"
 
+    system_prompt = f"{_BASE_SYSTEM_PROMPT}\n\nLANGUAGE: {lang_note}"
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {
-                "role": "system",
-                "content": f"{_BASE_SYSTEM_PROMPT}\n\n{_LANGUAGE_INSTRUCTIONS[lang]}",
-            },
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
     )
@@ -269,31 +422,24 @@ def chat():
     if not isinstance(payload, dict):
         return jsonify({"error": "Request body must be a JSON object"}), 400
 
-    lang = _chat_language(payload.get("lang"))
-
     raw_messages = payload.get("messages")
-    if raw_messages is not None:
-        if not isinstance(raw_messages, list) or not raw_messages:
-            return jsonify({"error": "Messages must be a non-empty list"}), 400
-        if len(raw_messages) > 10:
-            return jsonify({"error": "A message batch can contain at most 10 messages"}), 400
-        if not all(isinstance(message, str) for message in raw_messages):
-            return jsonify({"error": "Every message must be a string"}), 400
-        messages = [message.strip() for message in raw_messages]
-        if any(not message for message in messages):
-            return jsonify({"error": "Messages cannot be empty"}), 400
-        user_message = "\n".join(messages)
-    else:
-        raw_message = payload.get("message")
-        if not isinstance(raw_message, str):
-            return jsonify({"error": "Message must be a string"}), 400
+    if raw_messages is None:
+        raw_msg = payload.get("message")
+        raw_messages = [raw_msg] if isinstance(raw_msg, str) else None
+    if not isinstance(raw_messages, list) or not raw_messages:
+        return jsonify({"error": "Provide a non-empty 'messages' list"}), 400
 
-        user_message = raw_message.strip()
-        if not user_message:
-            return jsonify({"error": "Empty message"}), 400
+    messages = [m.strip() for m in raw_messages if isinstance(m, str) and m.strip()]
+    if not messages:
+        return jsonify({"error": "Empty messages"}), 400
+
+    user_input = "\n".join(messages)
+
+    lang = _chat_language(payload.get("lang"))
+    lang_note = _LANG_INSTRUCTION[lang]
 
     try:
-        relevant_memories = memory.retrieve(user_message)
+        relevant_memories = memory.retrieve(user_input)
     except Exception:
         app.logger.exception("Failed to retrieve memories")
         return jsonify({"error": "The chat service is temporarily unavailable"}), 502
@@ -301,19 +447,19 @@ def chat():
     is_first_meeting = memory.collection.count() == 0
 
     if is_first_meeting:
-        system_prompt = _BASE_SYSTEM_PROMPT + "\n\nThis is your first time meeting this user. You know nothing about them yet. Your priority is to learn their name and get to know them — ask warmly and naturally, like meeting someone new for the first time. Say 'nice to meet you' once you know their name."
+        system_prompt = (
+            _BASE_SYSTEM_PROMPT + _MULTI_MSG_INSTRUCTION
+            + f"\n\nLANGUAGE: {lang_note}\n\nThis is your first time meeting this user. "
+            "You know nothing about them yet. Your priority is to learn their name and get to know them — "
+            "ask warmly and naturally, like meeting someone new for the first time. "
+            "Say 'nice to meet you' once you know their name."
+        )
     elif relevant_memories:
         memory_block = "What you know about the user:\n" + "\n".join(f"- {m}" for m in relevant_memories)
-        system_prompt = f"{_BASE_SYSTEM_PROMPT}\n\n{memory_block}"
+        system_prompt = f"{_BASE_SYSTEM_PROMPT}{_MULTI_MSG_INSTRUCTION}\n\nLANGUAGE: {lang_note}\n\n{memory_block}"
     else:
-        system_prompt = _BASE_SYSTEM_PROMPT
+        system_prompt = f"{_BASE_SYSTEM_PROMPT}{_MULTI_MSG_INSTRUCTION}\n\nLANGUAGE: {lang_note}"
 
-    system_prompt = (
-        f"{system_prompt}\n\n{_LANGUAGE_INSTRUCTIONS[lang]}"
-        f"\n\n{_REPLY_BUBBLES_INSTRUCTION}"
-    )
-
-    user_turn = {"role": "user", "content": user_message}
     try:
         from typing import cast
         from openai.types.chat import ChatCompletionMessageParam
@@ -323,9 +469,8 @@ def chat():
                 list[ChatCompletionMessageParam],
                 [{"role": "system", "content": system_prompt}]
                 + conversation_history
-                + [user_turn]
+                + [{"role": "user", "content": user_input}]
             ),
-            response_format=_REPLY_BUBBLES_FORMAT,
         )
     except Exception:
         app.logger.exception("Failed to generate a chat response")
@@ -336,27 +481,35 @@ def chat():
         app.logger.error("The chat model returned an empty response")
         return jsonify({"error": "The chat service returned an empty response"}), 502
 
-    try:
-        structured_response = json.loads(raw_response)
-        replies = [
-            reply.strip()
-            for reply in structured_response["replies"]
-            if isinstance(reply, str) and reply.strip()
-        ]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        app.logger.error("The chat model returned an invalid structured response")
-        return jsonify({"error": "The chat service returned an invalid response"}), 502
+    # Parse ACTION: WAIT / ACTION: REPLY — also catches Chinese translations as fallback
+    match = re.match(
+        r'^(?:ACTION|行动)[：:]\s*(WAIT|等待|REPLY|回复)\s*\n?(.*)',
+        raw_response.strip(), re.DOTALL | re.IGNORECASE
+    )
+    if match:
+        keyword = match.group(1).upper()
+        action = "WAIT" if keyword in ("WAIT", "等待") else "REPLY"
+        reply_text = match.group(2).strip()
+    else:
+        action = "REPLY"
+        reply_text = raw_response.strip()
 
-    if not 1 <= len(replies) <= 10:
-        app.logger.error("The chat model returned an invalid number of reply bubbles")
-        return jsonify({"error": "The chat service returned an invalid response"}), 502
+    if action == "WAIT":
+        return jsonify({"action": "wait"})
 
-    assistant_message = "\n".join(replies)
-
-    conversation_history.append(user_turn)
+    blocks = drop_trailing_question(split_into_blocks(reply_text))
+    assistant_message = "\n".join(blocks)
+    for msg in messages:
+        conversation_history.append({"role": "user", "content": msg})
     conversation_history.append({"role": "assistant", "content": assistant_message})
 
-    return jsonify({"response": assistant_message, "responses": replies})
+    try:
+        memories_saved = memory.extract_and_store(user_input, assistant_message)
+    except Exception:
+        app.logger.exception("Failed to extract or store memories")
+        memories_saved = []
+
+    return jsonify({"action": "reply", "blocks": blocks, "memories_saved": memories_saved})
 
 
 @app.route("/remember", methods=["POST"])
@@ -381,6 +534,65 @@ def remember():
         return jsonify({"error": "Memory storage is temporarily unavailable"}), 502
 
     return jsonify({"memories_saved": memories_saved})
+
+
+@app.route("/nudge", methods=["POST"])
+def nudge():
+    payload = request.get_json(silent=True) or {}
+
+    raw_messages = payload.get("messages", [])
+    messages = [m.strip() for m in raw_messages if isinstance(m, str) and m.strip()]
+
+    lang = payload.get("lang", "en")
+    if lang not in _LANG_INSTRUCTION:
+        lang = "en"
+    lang_note = _LANG_INSTRUCTION[lang]
+
+    if messages:
+        msgs_text = "\n".join(f'- "{m}"' for m in messages)
+        nudge_prompt = (
+            f"The user sent these messages but then went quiet for 20 seconds:\n{msgs_text}\n\n"
+            "They seemed to be building up to something. Give them a very light, curious nudge — "
+            "like a friend who's just quietly waiting, not demanding. "
+            "Keep it short and low-pressure: a simple question or a soft '...?' style prompt. "
+            "Do NOT use phrases like 'don't leave me hanging' or anything that sounds impatient or pushy. "
+            "No ACTION: prefix."
+        )
+    else:
+        nudge_prompt = (
+            "The user went quiet. Give them a soft, low-pressure check-in — one casual question or short prompt. "
+            "Not pushy. No ACTION: prefix."
+        )
+
+    system_prompt = f"{_BASE_SYSTEM_PROMPT}\n\nLANGUAGE: {lang_note}"
+
+    try:
+        from typing import cast
+        from openai.types.chat import ChatCompletionMessageParam
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=cast(
+                list[ChatCompletionMessageParam],
+                [{"role": "system", "content": system_prompt}]
+                + conversation_history
+                + [{"role": "user", "content": nudge_prompt}]
+            ),
+        )
+    except Exception:
+        app.logger.exception("Failed to generate nudge")
+        return jsonify({"error": "The chat service is temporarily unavailable"}), 502
+
+    nudge_message = (response.choices[0].message.content or "so... what's up?").strip()
+
+    for msg in messages:
+        conversation_history.append({"role": "user", "content": msg})
+    conversation_history.append({"role": "assistant", "content": nudge_message})
+
+    blocks = [b.strip() for b in nudge_message.split("|||") if b.strip()]
+    if not blocks:
+        blocks = [nudge_message]
+
+    return jsonify({"blocks": blocks})
 
 
 if __name__ == "__main__":

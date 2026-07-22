@@ -245,7 +245,6 @@
     }
 
     .message {
-      max-width: 75%;
       padding: 12px 16px;
       border-radius: 12px;
       font-size: 14px;
@@ -254,6 +253,7 @@
     }
 
     .message.user {
+      max-width: 75%;
       background: #1a1a2e;
       color: white;
       align-self: flex-end;
@@ -272,6 +272,12 @@
       gap: 8px;
       align-self: flex-start;
       max-width: 80%;
+    }
+
+    /* Continuation block in a burst: no avatar, indent to align with avatared blocks */
+    .bot-row.no-avatar {
+      padding-left: 40px; /* 32px avatar + 8px gap */
+      margin-top: -8px;   /* pull closer to the block above */
     }
 
     .bot-avatar {
@@ -397,9 +403,9 @@
     const settingsClose = document.getElementById("settings-close");
 
     const UI = {
-      en: { placeholder: "Type a message...", send: "Send", memories: "Memories", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
-      zh: { placeholder: "输入消息...", send: "发送", memories: "记忆", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
-      de: { placeholder: "Nachricht eingeben...", send: "Senden", memories: "Erinnerungen", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
+      en: { placeholder: "Type a message...", send: "Send", thinking: "Typing...", memories: "Memories", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
+      zh: { placeholder: "输入消息...", send: "发送", thinking: "正在输入...", memories: "记忆", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
+      de: { placeholder: "Nachricht eingeben...", send: "Senden", thinking: "Tippt...", memories: "Erinnerungen", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
     };
 
     const savedLang = sessionStorage.getItem("lang");
@@ -460,8 +466,9 @@
         applyLang(btn.dataset.lang);
         overlay.classList.add("hidden");
         sessionStorage.removeItem("chatLog");
-        sessionStorage.removeItem("pendingReplyBatch");
-        pendingMessages = [];
+        messageBuffer = [];
+        clearTimeout(batchTimer); batchTimer = null;
+        clearTimeout(nudgeTimer); nudgeTimer = null;
         greet();
       });
     });
@@ -473,18 +480,22 @@
       sessionStorage.setItem("chatLog", JSON.stringify(chatLog));
     }
 
-    function renderMessage(text, role) {
+    function renderMessage(text, role, { showAvatar = true } = {}) {
       const div = document.createElement("div");
       div.className = `message ${role}`;
       div.textContent = text;
       if (role === "bot") {
         const row = document.createElement("div");
-        row.className = "bot-row";
-        const avatar = document.createElement("img");
-        avatar.className = "bot-avatar";
-        avatar.src = "/static/thumper.png";
-        avatar.alt = "Thumper";
-        row.appendChild(avatar);
+        if (showAvatar) {
+          row.className = "bot-row";
+          const avatar = document.createElement("img");
+          avatar.className = "bot-avatar";
+          avatar.src = "/static/thumper.png";
+          avatar.alt = "Thumper";
+          row.appendChild(avatar);
+        } else {
+          row.className = "bot-row no-avatar";
+        }
         row.appendChild(div);
         messagesEl.appendChild(row);
       } else {
@@ -494,10 +505,10 @@
       return div;
     }
 
-    function addMessage(text, role) {
+    function addMessage(text, role, opts = {}) {
       chatLog.push({ type: "message", text, role });
       saveChatLog();
-      return renderMessage(text, role);
+      return renderMessage(text, role, opts);
     }
 
     function addMemoryTag(memories, lang = currentLang) {
@@ -545,121 +556,140 @@
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    const QUIET_PERIOD_MS = 800;
-    const MAX_BATCH_WAIT_MS = 10000;
-    const MAX_MESSAGES_PER_BATCH = 10;
-    let replyTimer = null;
-    let responseInFlight = false;
-    let isComposing = false;
-    let lastInputAt = 0;
+    // Multi-message state
+    let messageBuffer = [];
+    let chatState = "idle"; // "idle" | "thinking" | "waiting"
+    let nudgeTimer = null;
+    let batchTimer = null;
+    let callChatInProgress = false; // mutex: prevents concurrent callChat calls
+    let lastKeystrokeAt = 0;        // timestamp of last input event
 
-    let pendingMessages = [];
-    let firstPendingAt = 0;
-    try {
-      const savedBatch = JSON.parse(sessionStorage.getItem("pendingReplyBatch") || "null");
-      if (savedBatch && Array.isArray(savedBatch.messages)) {
-        pendingMessages = savedBatch.messages.filter(message => typeof message === "string" && message.trim());
-        firstPendingAt = Number(savedBatch.firstPendingAt) || Date.now();
-        lastInputAt = Number(savedBatch.lastInputAt) || firstPendingAt;
-      }
-    } catch (_error) {
-      sessionStorage.removeItem("pendingReplyBatch");
+    function makeTypingRow() {
+      const row = document.createElement("div");
+      row.className = "bot-row";
+      const av = document.createElement("img");
+      av.className = "bot-avatar";
+      av.src = "/static/thumper.png";
+      av.alt = "Thumper";
+      const dot = document.createElement("div");
+      dot.className = "typing";
+      dot.textContent = UI[currentLang].thinking;
+      row.appendChild(av);
+      row.appendChild(dot);
+      return row;
     }
 
-    function savePendingBatch() {
-      if (pendingMessages.length === 0) {
-        sessionStorage.removeItem("pendingReplyBatch");
+    async function showBlocks(blocks) {
+      for (let i = 0; i < blocks.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 250 + Math.random() * 150));
+        const tr = makeTypingRow();
+        messagesEl.appendChild(tr);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        const typingMs = Math.min(350 + blocks[i].length * 38 + Math.random() * 200, 3000);
+        await new Promise(r => setTimeout(r, typingMs));
+        tr.remove();
+        addMessage(blocks[i], "bot", { showAvatar: i === 0 });
+      }
+    }
+
+    async function callChat() {
+      if (callChatInProgress) {
+        clearTimeout(batchTimer);
+        batchTimer = setTimeout(() => { batchTimer = null; callChat(); }, 500);
         return;
       }
-      sessionStorage.setItem("pendingReplyBatch", JSON.stringify({
-        messages: pendingMessages,
-        firstPendingAt,
-        lastInputAt,
-      }));
-    }
+      callChatInProgress = true;
+      chatState = "thinking";
+      sendBtn.disabled = true;
 
-    function scheduleReply() {
-      clearTimeout(replyTimer);
-      replyTimer = null;
-      if (responseInFlight || pendingMessages.length === 0) return;
-
-      const now = Date.now();
-      const maxWaitRemaining = MAX_BATCH_WAIT_MS - (now - firstPendingAt);
-      const quietTimeRemaining = QUIET_PERIOD_MS - (now - lastInputAt);
-      const userHasDraft = isComposing || inputEl.value.trim().length > 0;
-
-      if (maxWaitRemaining <= 0 || (!userHasDraft && quietTimeRemaining <= 0)) {
-        dispatchPendingMessages();
-        return;
-      }
-
-      const nextCheck = userHasDraft
-        ? Math.min(maxWaitRemaining, 500)
-        : Math.min(maxWaitRemaining, quietTimeRemaining);
-      replyTimer = setTimeout(scheduleReply, Math.max(50, nextCheck));
-    }
-
-    function waitUntilUserStopsTyping() {
-      return new Promise(resolve => {
-        function checkTypingState() {
-          const hasDraft = inputEl.value.trim().length > 0;
-          const quietTimeRemaining = QUIET_PERIOD_MS - (Date.now() - lastInputAt);
-
-          if (!isComposing && (!hasDraft || quietTimeRemaining <= 0)) {
-            resolve();
-            return;
-          }
-
-          const nextCheck = isComposing
-            ? 100
-            : Math.max(50, Math.min(quietTimeRemaining, 200));
-          setTimeout(checkTypingState, nextCheck);
-        }
-
-        checkTypingState();
-      });
-    }
-
-    async function dispatchPendingMessages() {
-      if (responseInFlight || pendingMessages.length === 0) return;
-
-      clearTimeout(replyTimer);
-      replyTimer = null;
-      responseInFlight = true;
-      const batch = pendingMessages.splice(0, MAX_MESSAGES_PER_BATCH);
-      const batchLang = currentLang;
-      firstPendingAt = pendingMessages.length > 0 ? Date.now() : 0;
-      savePendingBatch();
+      const snapshot = [...messageBuffer];
 
       try {
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: batch, lang: batchLang }),
+          body: JSON.stringify({ messages: snapshot, lang: currentLang }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
-        const replies = Array.isArray(data.responses)
-          ? data.responses.filter(reply => typeof reply === "string" && reply.trim()).slice(0, 10)
-          : (typeof data.response === "string" ? [data.response] : []);
-        if (replies.length === 0) throw new Error("The server returned an invalid response.");
 
-        for (let index = 0; index < replies.length; index += 1) {
-          await waitUntilUserStopsTyping();
-          addMessage(replies[index], "bot");
-          if (index < replies.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 180));
+        if (data.action === "wait") {
+          if (messageBuffer.length > snapshot.length) {
+            chatState = "idle";
+            callChatInProgress = false;
+            await callChat();
+            return;
           }
+          chatState = "waiting";
+          sendBtn.disabled = false;
+          inputEl.focus();
+          nudgeTimer = setTimeout(callNudge, 60000);
+          return;
         }
-        void rememberConversation(batch, replies.join("\n"), batchLang);
+
+        // REPLY — only remove the messages we just processed; any that arrived
+        // during the LLM call stay in the buffer for the next callChat.
+        messageBuffer.splice(0, snapshot.length);
+        chatState = "idle";
+        sendBtn.disabled = false;
+        inputEl.focus();
+        await new Promise(r => setTimeout(r, 500));
+        // Poll until the user has been idle long enough:
+        //   input has content → wait for 20s of no keystrokes
+        //   input empty       → wait for 5s of no keystrokes
+        while (true) {
+          const idleMs = Date.now() - lastKeystrokeAt;
+          const threshold = inputEl.value.trim().length > 0 ? 20000 : 5000;
+          if (idleMs >= threshold) break;
+          await new Promise(r => setTimeout(r, 200));
+        }
+        await showBlocks(data.blocks || []);
+        addMemoryTag(data.memories_saved);
       } catch (e) {
         addMessage(e.message || "Something went wrong. Please try again.", "bot");
+        chatState = "idle";
       } finally {
-        responseInFlight = false;
-        inputEl.focus();
-        scheduleReply();
+        callChatInProgress = false;
+        if (chatState !== "waiting") {
+          sendBtn.disabled = false;
+          inputEl.focus();
+        }
       }
     }
+
+    async function callNudge() {
+      nudgeTimer = null;
+      clearTimeout(batchTimer);
+      batchTimer = null;
+      if (inputEl.value.trim().length > 0) return;
+
+      const buffered = [...messageBuffer];
+      const typingRow = makeTypingRow();
+      messagesEl.appendChild(typingRow);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try {
+        const res = await fetch("/nudge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: buffered, lang: currentLang }),
+        });
+        const data = await res.json();
+        typingRow.remove();
+        if (messageBuffer.length > buffered.length) return;
+        messageBuffer = [];
+        await waitForUserToFinish();
+        await showBlocks(data.blocks || []);
+      } catch (e) {
+        typingRow.remove();
+      } finally {
+        if (chatState !== "thinking") {
+          sendBtn.disabled = false;
+          inputEl.focus();
+        }
+      }
+    }
+
 
     function sendMessage() {
       const text = inputEl.value.trim();
@@ -667,38 +697,39 @@
 
       inputEl.value = "";
       addMessage(text, "user");
-      const now = Date.now();
-      if (pendingMessages.length === 0) firstPendingAt = now;
-      pendingMessages.push(text);
-      lastInputAt = now;
-      savePendingBatch();
-      scheduleReply();
-      inputEl.focus();
+      messageBuffer.push(text);
+
+      clearTimeout(nudgeTimer);
+      nudgeTimer = null;
+
+      clearTimeout(batchTimer);
+      batchTimer = setTimeout(() => { batchTimer = null; callChat(); }, 800);
     }
 
     sendBtn.addEventListener("click", sendMessage);
-    inputEl.addEventListener("input", () => {
-      lastInputAt = Date.now();
-      savePendingBatch();
-      scheduleReply();
-    });
-    inputEl.addEventListener("compositionstart", () => {
-      isComposing = true;
-      lastInputAt = Date.now();
-      scheduleReply();
-    });
-    inputEl.addEventListener("compositionend", () => {
-      isComposing = false;
-      lastInputAt = Date.now();
-      savePendingBatch();
-      scheduleReply();
-    });
     inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.isComposing && !isComposing) {
-        e.preventDefault();
-        sendMessage();
+      if (e.key === "Enter" && !e.isComposing) sendMessage();
+    });
+    inputEl.addEventListener("input", () => {
+      lastKeystrokeAt = Date.now();
+      if (batchTimer !== null && messageBuffer.length > 0) {
+        clearTimeout(batchTimer);
+        batchTimer = setTimeout(() => { batchTimer = null; callChat(); }, 800);
       }
     });
+
+    function isUserDoneTyping() {
+      const idle = Date.now() - lastKeystrokeAt;
+      if (inputEl.value.trim().length === 0) return idle > 5000;
+      return idle > 35000;
+    }
+
+    async function waitForUserToFinish(maxMs = 60000) {
+      const start = Date.now();
+      while (!isUserDoneTyping() && Date.now() - start < maxMs) {
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
 
     async function greet() {
       sendBtn.disabled = true;
@@ -711,7 +742,6 @@
       }
       sendBtn.disabled = false;
       inputEl.focus();
-      scheduleReply();
     }
 
     // Show language picker on first load; skip if already chosen this session
@@ -722,7 +752,6 @@
       applyLang(currentLang);
       if (chatLog.length > 0) {
         restoreChat();
-        scheduleReply();
       } else {
         greet();
       }
