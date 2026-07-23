@@ -139,6 +139,8 @@ _MEMORY_PAGE_COPY = {
         "episodic_empty_heading": "No short-term memories yet",
         "episodic_empty_copy": "Temporary plans and recent events will appear here.",
         "view_demo": "View full example",
+        "delete_confirm": "Delete this memory?",
+        "delete_btn": "Delete",
     },
     "zh": {
         "html_lang": "zh-CN",
@@ -163,6 +165,8 @@ _MEMORY_PAGE_COPY = {
         "episodic_empty_heading": "还没有短期记忆",
         "episodic_empty_copy": "临时计划和近期事件会出现在这里。",
         "view_demo": "查看完整示例",
+        "delete_confirm": "删除这条记忆？",
+        "delete_btn": "删除",
     },
     "de": {
         "html_lang": "de",
@@ -187,6 +191,8 @@ _MEMORY_PAGE_COPY = {
         "episodic_empty_heading": "Noch keine Kurzzeiterinnerungen",
         "episodic_empty_copy": "Vorübergehende Pläne und aktuelle Ereignisse erscheinen hier.",
         "view_demo": "Vollständiges Beispiel ansehen",
+        "delete_confirm": "Diese Erinnerung löschen?",
+        "delete_btn": "Löschen",
     },
 }
 
@@ -339,14 +345,18 @@ def memories():
         results = memory.collection.get(include=["documents", "metadatas"])
         docs = results.get("documents") or []
         metas = results.get("metadatas") or []
+        ids = results.get("ids") or []
         if len(metas) < len(docs):
             metas = [*metas, *([None] * (len(docs) - len(metas)))]
-        raw_entries = list(zip(docs, metas))
+        if len(ids) < len(docs):
+            ids = [*ids, *([None] * (len(docs) - len(ids)))]
+        raw_entries = list(zip(docs, metas, ids))
 
-    def view_model(document, metadata):
+    def view_model(document, metadata, mem_id=None):
         meta = metadata or {}
         importance = max(0.0, min(1.0, float(meta.get("importance", 0))))
         return {
+            "id": mem_id,
             "text": str(document),
             "importance": importance,
             "importance_percent": round(importance * 100),
@@ -354,7 +364,10 @@ def memories():
             "category": meta.get("category", "episodic"),
         }
 
-    entries = [view_model(document, metadata) for document, metadata in raw_entries]
+    if is_demo:
+        entries = [view_model(document, metadata) for document, metadata in raw_entries]
+    else:
+        entries = [view_model(document, metadata, mem_id) for document, metadata, mem_id in raw_entries]
     core = [entry for entry in entries if entry["category"] == "core"]
     episodic = [entry for entry in entries if entry["category"] != "core"]
 
@@ -593,6 +606,16 @@ def nudge():
         blocks = [nudge_message]
 
     return jsonify({"blocks": blocks})
+
+
+@app.route("/memory/<memory_id>", methods=["DELETE"])
+def delete_memory(memory_id):
+    try:
+        memory.collection.delete(ids=[memory_id])
+    except Exception:
+        app.logger.exception("Failed to delete memory %s", memory_id)
+        return jsonify({"error": "Failed to delete memory"}), 500
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

@@ -265,6 +265,27 @@ LLM Response
 
 ---
 
+## 2026-07-23 — User-Controlled Memory Deletion
+
+**What we built:**
+
+- Users can now delete individual memories directly from the `/memories` dashboard — no need to touch the database or restart the server.
+
+**Backend (`src/app.py`):**
+- Added `DELETE /memory/<memory_id>` endpoint — calls `collection.delete()` on the ChromaDB collection and returns `{"ok": true}`. Errors are caught and return a `500`.
+- `/memories` route now fetches Chroma IDs alongside documents and metadatas, and passes each memory's `id` through to the template via the view model.
+- Added localized `delete_confirm` and `delete_btn` strings to `_MEMORY_PAGE_COPY` for English, Chinese, and German.
+
+**Frontend (`src/templates/memories.html`):**
+- Each memory card now has a `data-id` attribute and a small `✕` delete button that appears on hover (top-right corner of the card).
+- Hovering the button turns it red to signal a destructive action.
+- On click: shows a localized `confirm()` dialog, sends `DELETE /memory/<id>`, then fades the card out and removes it from the DOM — no page reload needed.
+- Section count badges and the total count in the hero are updated in place after deletion.
+- The delete button is suppressed on demo-mode cards (which have no real ID).
+- Also fixed the importance score-fill bars, which were always stuck at `width: 0%` due to a missing script.
+
+---
+
 ## 2026-07-22 — Next Plan: Short-Term to Long-Term Consolidation
 
 **Status:** Planned, not implemented.

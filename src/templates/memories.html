@@ -215,11 +215,35 @@
     }
 
     .memory-card {
+      position: relative;
       padding: 17px 18px;
       border: 1px solid var(--line);
       border-radius: 16px;
       background: rgba(255, 255, 255, 0.72);
     }
+
+    .delete-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 160ms ease, background 160ms ease, color 160ms ease;
+    }
+
+    .memory-card:hover .delete-btn { opacity: 1; }
+    .delete-btn:hover { background: #fee2e2; color: #b91c1c; }
+    .delete-btn:active { transform: scale(0.92); }
 
     .memory-text {
       margin: 0;
@@ -309,7 +333,8 @@
         {% if core_memories %}
           <div class="memory-list">
             {% for item in core_memories %}
-              <article class="memory-card">
+              <article class="memory-card" data-id="{{ item.id }}">
+                {% if item.id %}<button class="delete-btn" aria-label="{{ copy.delete_btn }}" title="{{ copy.delete_btn }}" onclick="deleteMemory(this)">✕</button>{% endif %}
                 <p class="memory-text">{{ item.text }}</p>
                 <div class="meta-row">
                   <span class="score"><span>{{ copy.importance }} {{ item.importance_percent|default(0) }}%</span><span class="score-track"><span class="score-fill" style="width: 0%;" data-width="{{ item.importance_percent|default(0) }}"></span></span></span>
@@ -334,7 +359,8 @@
         {% if episodic_memories %}
           <div class="memory-list">
             {% for item in episodic_memories %}
-              <article class="memory-card">
+              <article class="memory-card" data-id="{{ item.id }}">
+                {% if item.id %}<button class="delete-btn" aria-label="{{ copy.delete_btn }}" title="{{ copy.delete_btn }}" onclick="deleteMemory(this)">✕</button>{% endif %}
                 <p class="memory-text">{{ item.text }}</p>
                 <div class="meta-row">
                   <span class="score"><span>{{ copy.importance }} {{ item.importance_percent|default(0) }}%</span><span class="score-track"><span class="score-fill" style="width: 0%;" data-width="{{ item.importance_percent|default(0) }}"></span></span></span>
@@ -353,5 +379,40 @@
       </section>
     </div>
   </main>
+  <script>
+    document.querySelectorAll('.score-fill[data-width]').forEach(el => {
+      el.style.width = el.dataset.width + '%';
+    });
+
+    const DELETE_CONFIRM = {{ copy.delete_confirm | tojson }};
+
+    async function deleteMemory(btn) {
+      const card = btn.closest('.memory-card');
+      const id = card.dataset.id;
+      if (!id || !confirm(DELETE_CONFIRM)) return;
+
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        card.style.transition = 'opacity 200ms ease, transform 200ms ease';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.96)';
+        setTimeout(() => {
+          const list = card.closest('.memory-list');
+          card.remove();
+          // Update section count badge
+          const section = list.closest('.memory-section');
+          const badge = section.querySelector('.count');
+          if (badge) badge.textContent = Math.max(0, parseInt(badge.textContent) - 1);
+          // Update total count in hero
+          const totalEl = document.querySelector('.total strong');
+          if (totalEl) totalEl.textContent = Math.max(0, parseInt(totalEl.textContent) - 1);
+        }, 210);
+      } catch {
+        btn.disabled = false;
+      }
+    }
+  </script>
 </body>
 </html>
