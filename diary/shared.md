@@ -181,6 +181,20 @@ LLM Response
 
 ---
 
+## 2026-07-21 — Language Picker + Session Navigation
+
+**What we built:**
+
+- Replaced the header language switcher with a full-screen overlay that appears at the start of every new session.
+  - The overlay shows Thumper's avatar, the title, and three language buttons (🇬🇧 English, 🇨🇳 中文, 🇩🇪 Deutsch).
+  - Language is stored in `sessionStorage` (not `localStorage`), so it persists within the same browser tab but resets when a new session starts.
+- Fixed the memories page navigation so it no longer breaks the chat:
+  - Removed `target="_blank"` from the Memories button — memories now open in the same tab.
+  - When the user returns via "← Back to chat", `sessionStorage` still holds both the language and the full chat log, so the conversation is restored exactly as left.
+- Result: users always choose a language at the start, and can freely switch between the chat and memory pages without losing context.
+
+---
+
 ## 2026-07-22 — Relative-Time Memory + Memory Dashboard
 
 **Memory changes:**
@@ -237,92 +251,6 @@ LLM Response
 
 ---
 
-## 2026-07-22 — Conversation Timing Overhaul + Reply Polish
-
-**Merge conflict resolution (dafei):**
-- Resolved three-way merge conflict between dafei's natural-timing commit and IMMFlight's multi-bubble/settings refactor across `src/app.py`, `src/templates/index.html`, and `src/templates/memories.html`.
-- Kept dafei's WAIT/REPLY text-based action parsing, stochastic hold, nudge, and `callChatInProgress` mutex; integrated IMMFlight's settings gear overlay, `/remember` async endpoint, `_MEMORY_PAGE_COPY` localisation dict, and `_chat_language()` helper.
-- Merged `UI` object in the frontend to carry both the `thinking` key (dafei) and the settings keys (`settings`, `settingsTitle`, `language`, `close`) (IMMFlight).
-
-**Reply timing redesign (dafei):**
-- Removed the stochastic 30/70 cut-in. Reply timing is now fully deterministic.
-- After receiving a REPLY from the LLM, the frontend waits a silent 0.5 s, then polls:
-  - Input box has content → wait until 20 s of keyboard idle before showing the reply.
-  - Input box empty → wait until 5 s of keyboard idle.
-- The "Typing…" indicator now only appears inside `showBlocks` immediately before each bubble, so it is never shown during the LLM processing phase or during WAIT state — no more flash-and-disappear.
-- WAIT state is fully silent: no indicator, send button re-enabled immediately, nudge timer extended from 20 s to 60 s.
-
-**Message buffer fix:**
-- Changed `messageBuffer = []` to `messageBuffer.splice(0, snapshot.length)` in the REPLY branch. Messages that arrive while a callChat is in flight are now preserved in the buffer instead of being silently discarded, preventing questions from being "serialised" into a later conversation round.
-
-**ACTION prefix robustness:**
-- Updated the backend regex to also match Chinese-translated variants (`行动：等待`, `行动:回复`, etc.) as a fallback, preventing them from leaking into the chat as raw text.
-- Added a `CRITICAL` line to `_MULTI_MSG_INSTRUCTION` requiring the ACTION prefix to always be written in English regardless of reply language.
-
-**Trailing question suppression:**
-- Added `drop_trailing_question(blocks)` in `app.py`: if the last bubble is a standalone question, it is removed before the response is returned. Applies whenever there is at least one non-question block remaining.
-- Strengthened the system prompt to explicitly discourage ending every reply with a question.
-
----
-
-## 2026-07-23 — User-Controlled Memory Deletion
-
-**What we built:**
-
-- Users can now delete individual memories directly from the `/memories` dashboard — no need to touch the database or restart the server.
-
-**Backend (`src/app.py`):**
-- Added `DELETE /memory/<memory_id>` endpoint — calls `collection.delete()` on the ChromaDB collection and returns `{"ok": true}`. Errors are caught and return a `500`.
-- `/memories` route now fetches Chroma IDs alongside documents and metadatas, and passes each memory's `id` through to the template via the view model.
-- Added localized `delete_confirm` and `delete_btn` strings to `_MEMORY_PAGE_COPY` for English, Chinese, and German.
-
-**Frontend (`src/templates/memories.html`):**
-- Each memory card now has a `data-id` attribute and a small `✕` delete button that appears on hover (top-right corner of the card).
-- Hovering the button turns it red to signal a destructive action.
-- On click: shows a localized `confirm()` dialog, sends `DELETE /memory/<id>`, then fades the card out and removes it from the DOM — no page reload needed.
-- Section count badges and the total count in the hero are updated in place after deletion.
-- The delete button is suppressed on demo-mode cards (which have no real ID).
-- Also fixed the importance score-fill bars, which were always stuck at `width: 0%` due to a missing script.
-
----
-
-## 2026-07-22 — Next Plan: Short-Term to Long-Term Consolidation
-
-**Status:** Planned, not implemented.
-
-**Goal:** Allow stable and repeatedly useful `episodic` memories to become permanent `core` memories instead of only decaying or being deleted.
-
-**Proposed design:**
-- Add `consolidate_memories()` to scan short-term memories periodically.
-- Select candidates using repeated mentions, `access_count`, memory age, and importance (initial proposal: at least 3 accesses/mentions and importance ≥ 0.7).
-- Use an LLM review step to reject one-off events and confirm that a candidate is a durable fact, preference, habit, relationship, or ongoing goal.
-- Check for duplicates and conflicts with existing `core` memories before promotion.
-- On approval, change `category` from `episodic` to `core` and store `promoted_at` plus `promotion_reason` metadata.
-- Initially run consolidation at application startup; consider a scheduled background task after evaluating cost and latency.
-
-**Acceptance tests:**
-- Repeated stable preferences are promoted.
-- Temporary appointments and dated events are not promoted.
-- Duplicate core memories are not created.
-- Conflicting core memories follow the existing replacement policy.
-- Candidates below the configured thresholds remain episodic.
-
----
-
-## 2026-07-21 — Language Picker + Session Navigation
-
-**What we built:**
-
-- Replaced the header language switcher with a full-screen overlay that appears at the start of every new session.
-  - The overlay shows Thumper's avatar, the title, and three language buttons (🇬🇧 English, 🇨🇳 中文, 🇩🇪 Deutsch).
-  - Language is stored in `sessionStorage` (not `localStorage`), so it persists within the same browser tab but resets when a new session starts.
-- Fixed the memories page navigation so it no longer breaks the chat:
-  - Removed `target="_blank"` from the Memories button — memories now open in the same tab.
-  - When the user returns via "← Back to chat", `sessionStorage` still holds both the language and the full chat log, so the conversation is restored exactly as left.
-- Result: users always choose a language at the start, and can freely switch between the chat and memory pages without losing context.
-
----
-
 ## 2026-07-22 — Buffered Messaging, Multi-Bubble Replies + Localization
 
 **Natural chat timing:**
@@ -366,6 +294,78 @@ LLM Response
 - Diagnosed `ERR_CONNECTION_REFUSED` as an exited Flask process and a later `500` as sandbox-blocked outbound API networking (`WinError 10013`).
 - Restarted Flask with network permission and repeatedly verified `HTTP 200` responses.
 - Removed stale duplicate Python listeners on port `8080` before each verified restart.
+
+---
+
+## 2026-07-22 — Conversation Timing Overhaul + Reply Polish
+
+**Merge conflict resolution (dafei):**
+- Resolved three-way merge conflict between dafei's natural-timing commit and IMMFlight's multi-bubble/settings refactor across `src/app.py`, `src/templates/index.html`, and `src/templates/memories.html`.
+- Kept dafei's WAIT/REPLY text-based action parsing, stochastic hold, nudge, and `callChatInProgress` mutex; integrated IMMFlight's settings gear overlay, `/remember` async endpoint, `_MEMORY_PAGE_COPY` localisation dict, and `_chat_language()` helper.
+- Merged `UI` object in the frontend to carry both the `thinking` key (dafei) and the settings keys (`settings`, `settingsTitle`, `language`, `close`) (IMMFlight).
+
+**Reply timing redesign (dafei):**
+- Removed the stochastic 30/70 cut-in. Reply timing is now fully deterministic.
+- After receiving a REPLY from the LLM, the frontend waits a silent 0.5 s, then polls:
+  - Input box has content → wait until 20 s of keyboard idle before showing the reply.
+  - Input box empty → wait until 5 s of keyboard idle.
+- The "Typing…" indicator now only appears inside `showBlocks` immediately before each bubble, so it is never shown during the LLM processing phase or during WAIT state — no more flash-and-disappear.
+- WAIT state is fully silent: no indicator, send button re-enabled immediately, nudge timer extended from 20 s to 60 s.
+
+**Message buffer fix:**
+- Changed `messageBuffer = []` to `messageBuffer.splice(0, snapshot.length)` in the REPLY branch. Messages that arrive while a callChat is in flight are now preserved in the buffer instead of being silently discarded, preventing questions from being "serialised" into a later conversation round.
+
+**ACTION prefix robustness:**
+- Updated the backend regex to also match Chinese-translated variants (`行动：等待`, `行动:回复`, etc.) as a fallback, preventing them from leaking into the chat as raw text.
+- Added a `CRITICAL` line to `_MULTI_MSG_INSTRUCTION` requiring the ACTION prefix to always be written in English regardless of reply language.
+
+**Trailing question suppression:**
+- Added `drop_trailing_question(blocks)` in `app.py`: if the last bubble is a standalone question, it is removed before the response is returned. Applies whenever there is at least one non-question block remaining.
+- Strengthened the system prompt to explicitly discourage ending every reply with a question.
+
+---
+
+## 2026-07-22 — Next Plan: Short-Term to Long-Term Consolidation
+
+**Status:** Planned, not implemented.
+
+**Goal:** Allow stable and repeatedly useful `episodic` memories to become permanent `core` memories instead of only decaying or being deleted.
+
+**Proposed design:**
+- Add `consolidate_memories()` to scan short-term memories periodically.
+- Select candidates using repeated mentions, `access_count`, memory age, and importance (initial proposal: at least 3 accesses/mentions and importance ≥ 0.7).
+- Use an LLM review step to reject one-off events and confirm that a candidate is a durable fact, preference, habit, relationship, or ongoing goal.
+- Check for duplicates and conflicts with existing `core` memories before promotion.
+- On approval, change `category` from `episodic` to `core` and store `promoted_at` plus `promotion_reason` metadata.
+- Initially run consolidation at application startup; consider a scheduled background task after evaluating cost and latency.
+
+**Acceptance tests:**
+- Repeated stable preferences are promoted.
+- Temporary appointments and dated events are not promoted.
+- Duplicate core memories are not created.
+- Conflicting core memories follow the existing replacement policy.
+- Candidates below the configured thresholds remain episodic.
+
+---
+
+## 2026-07-23 — User-Controlled Memory Deletion
+
+**What we built:**
+
+- Users can now delete individual memories directly from the `/memories` dashboard — no need to touch the database or restart the server.
+
+**Backend (`src/app.py`):**
+- Added `DELETE /memory/<memory_id>` endpoint — calls `collection.delete()` on the ChromaDB collection and returns `{"ok": true}`. Errors are caught and return a `500`.
+- `/memories` route now fetches Chroma IDs alongside documents and metadatas, and passes each memory's `id` through to the template via the view model.
+- Added localized `delete_confirm` and `delete_btn` strings to `_MEMORY_PAGE_COPY` for English, Chinese, and German.
+
+**Frontend (`src/templates/memories.html`):**
+- Each memory card now has a `data-id` attribute and a small `✕` delete button that appears on hover (top-right corner of the card).
+- Hovering the button turns it red to signal a destructive action.
+- On click: shows a localized `confirm()` dialog, sends `DELETE /memory/<id>`, then fades the card out and removes it from the DOM — no page reload needed.
+- Section count badges and the total count in the hero are updated in place after deletion.
+- The delete button is suppressed on demo-mode cards (which have no real ID).
+- Also fixed the importance score-fill bars, which were always stuck at `width: 0%` due to a missing script.
 
 ---
 
