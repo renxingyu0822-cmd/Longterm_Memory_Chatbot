@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thumper · 资产观察室</title>
+  <link rel="stylesheet" href="/static/market.css" />
+</head>
+<body data-lang="{{ lang }}">
+  <main class="market-shell">
+    <nav class="market-nav" aria-label="页面导航">
+      <div class="brand"><span class="brand-mark">T</span><span>Thumper</span></div>
+      <div class="nav-actions">
+        <a class="pill-link" href="/memories?lang={{ lang }}">记忆</a>
+        <a class="pill-link" href="/">← 返回聊天</a>
+      </div>
+    </nav>
+
+    <header class="hero-row">
+      <div>
+        <p class="eyebrow">Personal market workspace</p>
+        <h1>资产观察室</h1>
+        <p class="hero-copy">股票和基金分开管理。行情驱动概率预测，持仓由交易流水自动计算；这里提供研究与风险观察，不代替投资决策。</p>
+      </div>
+      <aside class="live-card">
+        <div class="live-line"><span class="live-dot" id="live-dot"></span><span id="live-label">正在连接行情</span></div>
+        <div class="live-meta" id="live-meta">预测最长约 60 秒刷新一次</div>
+      </aside>
+    </header>
+
+    <div class="asset-class-tabs" aria-label="资产大类">
+      <button class="tab-button active" type="button" data-asset-class="stock">股票</button>
+      <button class="tab-button" type="button" data-asset-class="fund">基金</button>
+    </div>
+    <div class="subtabs" id="stock-subtabs">
+      <button class="subtab active" type="button" data-subclass="all">全部股票</button>
+      <button class="subtab" type="button" data-subclass="cn">A股</button>
+      <button class="subtab" type="button" data-subclass="hk">港股</button>
+      <button class="subtab" type="button" data-subclass="us">美股</button>
+    </div>
+    <div class="subtabs" id="fund-subtabs" hidden>
+      <button class="subtab active" type="button" data-subclass="all">全部基金</button>
+      <button class="subtab" type="button" data-subclass="exchange_traded">场内基金</button>
+      <button class="subtab" type="button" data-subclass="otc">场外基金</button>
+    </div>
+
+    <section class="summary-grid" aria-label="组合概览">
+      <article class="summary-card"><span class="summary-label">持仓资产</span><strong class="summary-value" id="position-count">0</strong><div class="summary-sub">由交易流水计算</div></article>
+      <article class="summary-card"><span class="summary-label">自选观察</span><strong class="summary-value" id="watchlist-count">0</strong><div class="summary-sub">可不持有</div></article>
+      <article class="summary-card"><span class="summary-label">当前分类盈亏</span><strong class="summary-value" id="profit-total">—</strong><div class="summary-sub" id="profit-currency">按币种分别汇总</div></article>
+      <article class="summary-card"><span class="summary-label">追踪资产</span><strong class="summary-value" id="tracked-count">0</strong><div class="summary-sub">持仓与自选去重</div></article>
+    </section>
+
+    <div class="workspace-grid">
+      <section class="panel">
+        <header class="panel-head">
+          <div><h2 class="panel-title" id="list-title">持有中</h2><p class="panel-copy" id="list-copy">成本、收益与实时预测</p></div>
+          <div class="view-tabs">
+            <button class="view-tab active" type="button" data-view="positions">持有中</button>
+            <button class="view-tab" type="button" data-view="watchlist_only">仅自选</button>
+          </div>
+        </header>
+        <div class="asset-list" id="asset-list">
+          <div class="empty-state"><span class="empty-icon">⌁</span>正在读取本地投资数据…</div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <header class="panel-head"><div><h2 class="panel-title">添加资产</h2><p class="panel-copy">在当前股票或基金分类内搜索</p></div></header>
+        <div class="search-panel">
+          <div class="search-line">
+            <input class="field" id="asset-search" type="search" placeholder="名称或代码" autocomplete="off" />
+            <button class="primary-button" id="search-button" type="button">搜索</button>
+          </div>
+          <div class="search-results" id="search-results"></div>
+        </div>
+        <p class="notice">股票和场内基金可使用实时行情；场外基金只显示最新正式净值。标记为“演示”的数据用于离线体验，不能用于真实投资判断。</p>
+      </aside>
+    </div>
+  </main>
+
+  <div class="modal-backdrop hidden" id="transaction-modal">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="transaction-title">
+      <header class="modal-head"><h2 id="transaction-title">录入交易</h2><button class="close-button" id="transaction-close" type="button" aria-label="关闭">×</button></header>
+      <form id="transaction-form">
+        <input id="transaction-asset-id" type="hidden" />
+        <div class="form-grid">
+          <label class="form-field full">资产<input class="field" id="transaction-asset-name" type="text" disabled /></label>
+          <label class="form-field">类型<select class="field" id="transaction-type"><option value="buy">买入</option><option value="sell">卖出</option><option value="subscribe">申购</option><option value="redeem">赎回</option><option value="dividend">现金分红</option><option value="fee">其他费用</option></select></label>
+          <label class="form-field">成交时间<input class="field" id="transaction-time" type="datetime-local" required /></label>
+          <label class="form-field" data-trade-field>数量/份额<input class="field" id="transaction-quantity" type="number" step="any" min="0" /></label>
+          <label class="form-field" data-trade-field>成交单价<input class="field" id="transaction-price" type="number" step="any" min="0" /></label>
+          <label class="form-field" data-cash-field hidden>现金金额<input class="field" id="transaction-cash" type="number" step="any" min="0" /></label>
+          <label class="form-field">手续费<input class="field" id="transaction-fees" type="number" step="any" min="0" value="0" /></label>
+          <label class="form-field">税费<input class="field" id="transaction-taxes" type="number" step="any" min="0" value="0" /></label>
+          <label class="form-field">汇率（兑基础币种）<input class="field" id="transaction-fx" type="number" step="any" min="0.000001" value="1" /></label>
+          <label class="form-field full">备注<textarea class="field" id="transaction-note" rows="2"></textarea></label>
+        </div>
+        <p class="form-error" id="transaction-error"></p>
+        <div class="form-actions"><button class="ghost-button" id="transaction-cancel" type="button">取消</button><button class="primary-button" id="transaction-submit" type="submit">保存交易</button></div>
+      </form>
+    </section>
+  </div>
+
+  <script src="/static/market.js"></script>
+</body>
+</html>

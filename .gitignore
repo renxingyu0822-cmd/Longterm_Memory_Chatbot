@@ -5,6 +5,7 @@
 # Secrets & local data
 .env
 src/chroma_db/
+src/data/
 __pycache__/
 *.pyc
 .venv/

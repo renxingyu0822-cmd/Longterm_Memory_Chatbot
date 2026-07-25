@@ -379,12 +379,13 @@
       </section>
     </div>
   </main>
+  <script id="delete-confirm" type="application/json">{{ copy.delete_confirm | tojson }}</script>
   <script>
+    const DELETE_CONFIRM = JSON.parse(document.getElementById('delete-confirm').textContent);
+
     document.querySelectorAll('.score-fill[data-width]').forEach(el => {
       el.style.width = el.dataset.width + '%';
     });
-
-    const DELETE_CONFIRM = {{ copy.delete_confirm | tojson }};
 
     async function deleteMemory(btn) {
       const card = btn.closest('.memory-card');
@@ -409,7 +410,7 @@
           const totalEl = document.querySelector('.total strong');
           if (totalEl) totalEl.textContent = Math.max(0, parseInt(totalEl.textContent) - 1);
         }, 210);
-      } catch {
+      } catch (error) {
         btn.disabled = false;
       }
     }

@@ -382,6 +382,7 @@
     <div class="chat-header">
       <div>Thumper <span id="powered">powered by GPT-4o-mini</span></div>
       <div class="header-actions">
+        <a class="memory-btn" id="market-link" href="/market">📈 <span id="market-label">Investments</span></a>
         <a class="memory-btn" id="memory-link" href="/memories">🧠 <span id="mem-label">Memories</span></a>
         <button class="memory-btn" id="settings-button" type="button" aria-label="Settings" title="Settings">⚙</button>
       </div>
@@ -403,9 +404,9 @@
     const settingsClose = document.getElementById("settings-close");
 
     const UI = {
-      en: { placeholder: "Type a message...", send: "Send", thinking: "Typing...", memories: "Memories", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
-      zh: { placeholder: "输入消息...", send: "发送", thinking: "正在输入...", memories: "记忆", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
-      de: { placeholder: "Nachricht eingeben...", send: "Senden", thinking: "Tippt...", memories: "Erinnerungen", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
+      en: { placeholder: "Type a message...", send: "Send", thinking: "Typing...", memories: "Memories", investments: "Investments", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
+      zh: { placeholder: "输入消息...", send: "发送", thinking: "正在输入...", memories: "记忆", investments: "投资", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
+      de: { placeholder: "Nachricht eingeben...", send: "Senden", thinking: "Tippt...", memories: "Erinnerungen", investments: "Investments", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
     };
 
     const savedLang = sessionStorage.getItem("lang");
@@ -420,12 +421,14 @@
       sendBtn.textContent = u.send;
       document.getElementById("powered").textContent = u.powered;
       document.getElementById("mem-label").textContent = u.memories;
+      document.getElementById("market-label").textContent = u.investments;
       settingsButton.setAttribute("aria-label", u.settings);
       settingsButton.title = u.settings;
       document.getElementById("settings-title").textContent = u.settingsTitle;
       document.getElementById("settings-language-label").textContent = u.language;
       settingsClose.setAttribute("aria-label", u.close);
       document.getElementById("memory-link").href = `/memories?lang=${lang}`;
+      document.getElementById("market-link").href = `/market?lang=${lang}`;
       document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
       document.querySelectorAll(".settings-lang-option").forEach(option => {
         const isActive = option.dataset.settingsLang === lang;

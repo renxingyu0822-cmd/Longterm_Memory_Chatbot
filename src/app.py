@@ -1,5 +1,6 @@
 import re
 import json
+import os
 from datetime import datetime, timedelta
 
 from flask import Flask, request, jsonify, render_template
@@ -90,8 +91,10 @@ _MEMORY_UI = {
 load_dotenv()
 
 import memory
+from market_routes import market_blueprint
 
 app = Flask(__name__)
+app.register_blueprint(market_blueprint)
 client = OpenAI()
 conversation_history = []
 
@@ -619,4 +622,12 @@ def delete_memory(memory_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8080)
+    from market_tracker import tracker
+
+    tracker.start()
+    app.run(
+        debug=os.getenv("THUMPER_DEBUG", "1") == "1",
+        host=os.getenv("THUMPER_HOST", "127.0.0.1"),
+        port=int(os.getenv("THUMPER_PORT", "8080")),
+        use_reloader=False,
+    )

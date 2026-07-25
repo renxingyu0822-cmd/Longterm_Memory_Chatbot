@@ -23,6 +23,37 @@ A conversational AI agent with long-term memory that continuously learns from us
 - **Vector DB:** Chroma (local, persistent)
 - **Backend:** Python + Flask
 - **Frontend:** HTML/CSS/JS (served by Flask)
+- **Investment data:** SQLite + a replaceable market-data provider
+
+## Investment Workspace
+
+Open **http://localhost:8080/market** or use the **Investments / 投资** button in the chat header.
+
+The local investment workspace includes:
+
+- Separate stock and fund areas: A-shares, Hong Kong stocks, U.S. stocks, exchange-traded funds, and OTC funds.
+- Independent watchlist and portfolio views. An asset can be watched without being held.
+- Immutable buy, sell, subscription, redemption, dividend, and fee records.
+- Automatic weighted-average cost, realized profit, unrealized profit, dividends, and total-return calculations.
+- Experimental 1, 3, 5, and 20 trading-day up / flat / down probabilities.
+- Risk metrics, walk-forward backtest statistics, and a cost-aware probability-threshold simulation.
+- Server-Sent Events and a background tracker that refresh followed assets while the local server is running.
+
+The default `hybrid` mode tries a best-effort Yahoo Finance prototype source and falls back to clearly labelled deterministic demo data when a symbol or network connection is unavailable. Yahoo data may be delayed and is suitable only for local prototyping. Before any public release, replace it with a licensed provider and review redistribution terms.
+
+OTC funds do not have an exchange-traded real-time price. The workspace treats their latest officially published NAV as delayed data and never labels a simulated intraday estimate as an official NAV.
+
+Optional `.env` settings:
+
+```bash
+MARKET_DATA_PROVIDER=hybrid  # hybrid or demo
+MARKET_REFRESH_SECONDS=60
+THUMPER_HOST=127.0.0.1
+THUMPER_PORT=8080
+THUMPER_DEBUG=1
+```
+
+Predictions and simulations are experimental research outputs, not investment advice or promises of future performance.
 
 ## Project Structure
 
