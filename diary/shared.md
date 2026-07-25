@@ -366,3 +366,37 @@ LLM Response
 - Diagnosed `ERR_CONNECTION_REFUSED` as an exited Flask process and a later `500` as sandbox-blocked outbound API networking (`WinError 10013`).
 - Restarted Flask with network permission and repeatedly verified `HTTP 200` responses.
 - Removed stale duplicate Python listeners on port `8080` before each verified restart.
+
+---
+
+## 2026-07-26 — Local Investment Workspace
+
+**What changed:**
+
+- Added `/market` as a new investment workspace and linked it from the localized chat navigation.
+- Added separate stock and fund areas covering A-shares, Hong Kong stocks, U.S. stocks, exchange-traded funds, and OTC funds.
+- Added asset search, an independent watchlist, portfolio positions, transaction entry, portfolio summaries, and asset-detail pages with price history.
+- Added an SQLite investment database with an immutable transaction ledger. Positions are derived from buy, sell, subscription, redemption, dividend, and fee records, including weighted-average cost and realized/unrealized return calculations.
+- Added a pluggable market-data layer. The default hybrid provider attempts Yahoo Finance and falls back to deterministic, clearly labelled demo quotes and history when live data is unavailable.
+- Added probability estimates for 1, 3, 5, and 20 trading days, along with risk metrics, walk-forward backtesting, and a transaction-cost-aware strategy simulation.
+- Added Server-Sent Events and a background tracker to refresh followed assets while the local Flask server is running.
+- Added responsive market and asset-detail interfaces, updated environment examples and dependencies, excluded local investment data from Git, and documented provider and investment-risk limitations in the README.
+- Added automated coverage for watchlist/position independence, weighted-cost accounting, overselling rejection, probability normalization, backtesting, service flows, market pages, and API transaction flows.
+- Updated the memory dashboard to pass localized deletion-confirmation text through a JSON script element safely.
+
+**Key design decisions:**
+
+- Watchlists and holdings remain separate concepts.
+- Transactions are the source of truth; position totals are recalculated rather than edited directly.
+- Market-data access is provider-based so a licensed source can replace the prototype integration without redesigning the workspace.
+- Demo fallbacks are explicitly labelled, and OTC funds are represented by delayed published NAV rather than simulated real-time prices.
+- All forecasts and simulations are experimental and must not be presented as investment advice or guaranteed returns.
+
+**Commit preparation:**
+
+- The staged change set was reviewed after an empty commit message caused Git to cancel the first commit attempt without discarding any changes.
+- Proposed English commit title: `feat: add an investment tracking workspace with market predictions`.
+
+**Verification:**
+
+- Ran `python -m unittest tests.test_market -v` with the project virtual environment; all 8 market tests passed.

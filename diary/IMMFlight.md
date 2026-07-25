@@ -109,3 +109,40 @@
 - Test real conversations with several rapidly entered questions and confirm the model chooses sensible bubble boundaries from one to ten replies.
 - Evaluate whether the `0.8`-second pause feels natural across desktop, mobile, and Chinese IME input.
 - Add a reliable development server start/stop command to eliminate stale Flask processes.
+
+---
+
+## 2026-07-26 — Investment Workspace and Commit Preparation
+
+**What I worked on:**
+
+- Added a local investment workspace to Thumper and linked it from the chat and memory pages.
+- Split assets into stocks and funds, with dedicated views for A-shares, Hong Kong stocks, U.S. stocks, exchange-traded funds, and OTC funds.
+- Added independent watchlist and portfolio flows, plus immutable buy, sell, subscription, redemption, dividend, and fee records.
+- Implemented SQLite-backed position accounting for weighted-average cost, realized and unrealized profit, dividends, and total return.
+- Added a replaceable market-data layer that uses Yahoo Finance on a best-effort basis and falls back to clearly labelled deterministic demo data.
+- Added 1-, 3-, 5-, and 20-trading-day trend probabilities, risk metrics, walk-forward backtests, and a cost-aware strategy simulation.
+- Added asset search, portfolio summaries, transaction entry, asset-detail charts, Server-Sent Events, and a background refresh tracker.
+- Documented the investment workspace, runtime configuration, data-source limitations, and investment-risk disclaimer.
+- Added market database, prediction, service, and route tests, and fixed safe JSON delivery of the localized memory-deletion confirmation text.
+- Ran the focused market test suite successfully: all 8 tests passed.
+- Reviewed the staged changes before committing. The first Git commit was cancelled because its message was empty, so I generated the English title `feat: add an investment tracking workspace with market predictions` for the retry.
+
+**Decisions made:**
+
+- Keep watchlist membership independent from ownership so an asset can be followed without being held.
+- Recalculate positions from the immutable transaction ledger instead of storing editable position totals.
+- Isolate the market-data provider so the prototype source can be replaced by a licensed provider before public release.
+- Label fallback data as demo data and treat OTC fund values as delayed official NAVs rather than real-time prices.
+- Present predictions and simulations as experimental research output, not investment advice.
+
+**Blockers / questions:**
+
+- The initial commit did not proceed because no commit message was supplied; the staged changes were preserved.
+- Yahoo Finance is only a prototype data source and may be delayed or unavailable. A licensed feed and redistribution review are still required for public use.
+
+**Next steps:**
+
+- Retry the commit with the prepared English title.
+- Replace the prototype feed with a licensed provider before public deployment.
+- Exercise the workspace with real portfolio data and expand accounting and market-provider edge-case coverage.
