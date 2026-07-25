@@ -55,32 +55,6 @@
 - Diagnosed the chat service's `502` response as sandboxed outbound networking rather than an invalid API key. Verified the OpenAI API independently and restarted Flask with the required network permission.
 - Found and removed duplicate Flask child processes that continued listening after their parent task ended, then verified a single listener on port 8080.
 - Documented short-term-to-long-term memory consolidation as the next project feature.
-
-**Decisions made:**
-
-- Resolve relative dates at write time using local system time, rather than interpreting words such as “tomorrow” again at retrieval time.
-- Keep both memory categories in one Chroma collection and distinguish them through the `category` metadata.
-- Force temporal messages into `episodic`, even if the extraction model classifies them differently or returns an empty result.
-- Keep demonstration content isolated behind a query parameter so examples never contaminate real user memory.
-- Treat memory consolidation as a separate planned feature with an LLM review step; access count alone should not make a temporary event permanent.
-
-**Blockers / questions:**
-
-- The local server needs outbound network permission to reach the OpenAI API; without it, `/chat` returns the user-safe temporary-unavailable response.
-- Stopping the retained command task does not always stop its spawned Python child on Windows, so port ownership must be checked before restarting.
-
-**Next steps:**
-
-- Implement and evaluate `consolidate_memories()` using repeated mentions, access count, age, importance, and an LLM durability check.
-- Add a reliable project start/stop helper that keeps exactly one Flask process and cleans up its child process.
-- Exercise real conversations containing both stable user facts and dated plans to evaluate extraction quality and promotion thresholds.
-
----
-
-## 2026-07-22 — Natural Chat Interaction Iteration
-
-**What I worked on:**
-
 - Proposed and iteratively refined a social-app-style conversation flow in which several short user messages can be sent before Thumper replies.
 - Chose a `0.8`-second quiet window after testing shorter timings, while keeping a 10-second maximum batch wait and a 10-message batch limit.
 - Requested that generated replies remain hidden while the user is actively typing and appear as soon as the input pauses or is sent.
@@ -93,6 +67,11 @@
 
 **Decisions made:**
 
+- Resolve relative dates at write time using local system time, rather than interpreting words such as “tomorrow” again at retrieval time.
+- Keep both memory categories in one Chroma collection and distinguish them through the `category` metadata.
+- Force temporal messages into `episodic`, even if the extraction model classifies them differently or returns an empty result.
+- Keep demonstration content isolated behind a query parameter so examples never contaminate real user memory.
+- Treat memory consolidation as a separate planned feature with an LLM review step; access count alone should not make a temporary event permanent.
 - Preserve the natural short-message buffer rather than replying immediately to every sentence.
 - Treat separate questions as separate reply bubbles while allowing fragments about the same topic to remain grouped.
 - Generate replies while the user types, but defer their visual delivery until the user pauses for `0.8` seconds or clears the input by sending.
@@ -101,14 +80,16 @@
 
 **Blockers / questions:**
 
-- The local Flask server must run outside the restricted network sandbox to reach the OpenAI API.
-- On Windows, stopping the command task can leave a Python child process listening on port `8080`; the exact port owner must be checked before restart.
+- The local server needs outbound network permission to reach the OpenAI API; without it, `/chat` returns the user-safe temporary-unavailable response.
+- Stopping the retained command task does not always stop its spawned Python child on Windows, so port ownership must be checked before restarting.
 
 **Next steps:**
 
+- Implement and evaluate `consolidate_memories()` using repeated mentions, access count, age, importance, and an LLM durability check.
+- Add a reliable project start/stop helper that keeps exactly one Flask process and cleans up its child process.
+- Exercise real conversations containing both stable user facts and dated plans to evaluate extraction quality and promotion thresholds.
 - Test real conversations with several rapidly entered questions and confirm the model chooses sensible bubble boundaries from one to ten replies.
 - Evaluate whether the `0.8`-second pause feels natural across desktop, mobile, and Chinese IME input.
-- Add a reliable development server start/stop command to eliminate stale Flask processes.
 
 ---
 
@@ -127,6 +108,8 @@
 - Added market database, prediction, service, and route tests, and fixed safe JSON delivery of the localized memory-deletion confirmation text.
 - Ran the focused market test suite successfully: all 8 tests passed.
 - Reviewed the staged changes before committing. The first Git commit was cancelled because its message was empty, so I generated the English title `feat: add an investment tracking workspace with market predictions` for the retry.
+- Asked to open the current Codex diff and clarified that this meant the change-review view rather than a file named `codex.diff`.
+- Requested that Codex diff review work normally in VS Code.
 
 **Decisions made:**
 
@@ -135,6 +118,7 @@
 - Isolate the market-data provider so the prototype source can be replaced by a licensed provider before public release.
 - Label fallback data as demo data and treat OTC fund values as delayed official NAVs rather than real-time prices.
 - Present predictions and simulations as experimental research output, not investment advice.
+- Prefer reviewing code changes through the Codex diff review experience in VS Code.
 
 **Blockers / questions:**
 

@@ -78,7 +78,9 @@ LLM Response
 
 ---
 
-## 2026-07-15 — Project Kickoff
+## 2026-07-15
+
+### Project Kickoff
 
 - Repo created: https://github.com/renxingyu0822-cmd/Longterm_Memory_Chatbot
 - Contributors: dafei, IMMFlight
@@ -89,7 +91,9 @@ LLM Response
 
 ---
 
-## 2026-07-16 — LLM + Web UI
+## 2026-07-16
+
+### LLM + Web UI
 
 **Tech stack decided:**
 - LLM: GPT-4o-mini (OpenAI)
@@ -110,7 +114,9 @@ LLM Response
 
 ---
 
-## 2026-07-18 — Core Memory System (Components 1, 2, 4)
+## 2026-07-18
+
+### Core Memory System (Components 1, 2, 4)
 
 **Decisions made:**
 - Vector DB: Chroma (local, file-based, no server needed — `pip install chromadb`)
@@ -137,7 +143,9 @@ LLM Response
 
 ---
 
-## 2026-07-19 — Naming, Avatar + Prompt Engineering
+## 2026-07-19
+
+### Naming, Avatar + Prompt Engineering
 
 **What we did:**
 - Named the chatbot **Thumper** — added to system prompt so it knows its own name
@@ -153,7 +161,9 @@ LLM Response
 
 ---
 
-## 2026-07-20 — Reliability, Security + Memory Categorisation
+## 2026-07-20
+
+### Reliability, Security + Memory Categorisation
 
 **Security & robustness (IMMFlight):**
 - Hardened the Flask `/chat` API — validates JSON body and message type, returns clear `400`/`502` errors
@@ -181,7 +191,9 @@ LLM Response
 
 ---
 
-## 2026-07-21 — Language Picker + Session Navigation
+## 2026-07-21
+
+### Language Picker + Session Navigation
 
 **What we built:**
 
@@ -195,7 +207,9 @@ LLM Response
 
 ---
 
-## 2026-07-22 — Relative-Time Memory + Memory Dashboard
+## 2026-07-22
+
+### Relative-Time Memory + Memory Dashboard
 
 **Memory changes:**
 - Episodic memories now resolve relative dates against the timezone-aware local system time at write time.
@@ -215,9 +229,7 @@ LLM Response
 - Added coverage for relative-date conversion, temporal fallback storage, metadata, demo rendering, and memory-output escaping.
 - All 10 tests pass.
 
----
-
-## 2026-07-22 — Natural Conversation Timing
+### Natural Conversation Timing
 
 **Goal:** Make the conversation feel more like real texting — the bot waits for the user to finish a thought before replying, batches rapid messages, and never interrupts mid-composition.
 
@@ -249,9 +261,7 @@ LLM Response
 **UX polish:**
 - "Thinking..." renamed to "Typing..." (正在输入... / Tippt...) across all three languages.
 
----
-
-## 2026-07-22 — Buffered Messaging, Multi-Bubble Replies + Localization
+### Buffered Messaging, Multi-Bubble Replies + Localization
 
 **Natural chat timing:**
 
@@ -295,9 +305,7 @@ LLM Response
 - Restarted Flask with network permission and repeatedly verified `HTTP 200` responses.
 - Removed stale duplicate Python listeners on port `8080` before each verified restart.
 
----
-
-## 2026-07-22 — Conversation Timing Overhaul + Reply Polish
+### Conversation Timing Overhaul + Reply Polish
 
 **Merge conflict resolution (dafei):**
 - Resolved three-way merge conflict between dafei's natural-timing commit and IMMFlight's multi-bubble/settings refactor across `src/app.py`, `src/templates/index.html`, and `src/templates/memories.html`.
@@ -323,9 +331,7 @@ LLM Response
 - Added `drop_trailing_question(blocks)` in `app.py`: if the last bubble is a standalone question, it is removed before the response is returned. Applies whenever there is at least one non-question block remaining.
 - Strengthened the system prompt to explicitly discourage ending every reply with a question.
 
----
-
-## 2026-07-22 — Next Plan: Short-Term to Long-Term Consolidation
+### Next Plan: Short-Term to Long-Term Consolidation
 
 **Status:** Planned, not implemented.
 
@@ -348,7 +354,9 @@ LLM Response
 
 ---
 
-## 2026-07-23 — User-Controlled Memory Deletion
+## 2026-07-23
+
+### User-Controlled Memory Deletion
 
 **What we built:**
 
@@ -369,7 +377,9 @@ LLM Response
 
 ---
 
-## 2026-07-26 — Local Investment Workspace
+## 2026-07-26
+
+### Local Investment Workspace
 
 **What changed:**
 
