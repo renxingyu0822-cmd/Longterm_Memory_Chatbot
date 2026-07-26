@@ -27,8 +27,8 @@ Open `http://localhost:8080/market`, or select **Investments / 投资** in the c
 - Immutable buy, sell, subscription, redemption, dividend, and fee records.
 - Automatic weighted-average cost, realized profit, unrealized profit, dividends, fees, and total-return calculations.
 - One-click portfolio or watchlist import from screenshots, PDF/Word documents, CSV/TSV/TXT/JSON, and XLS/XLSX files.
-- Experimental up / flat / down probabilities for 1, 3, 5, and 20 trading-day horizons.
-- Asset detail pages with price history, risk metrics, walk-forward backtests, and a cost-aware probability-threshold simulation.
+- Experimental 1, 3, 5, and 20 trading-day probabilities: stocks and exchange-traded funds use up / flat / down, while OTC funds use only up / down and compare the official NAV at the end of each horizon with the official NAV at its start.
+- Asset detail pages with price history, risk metrics, and walk-forward backtests, plus a cost-aware probability-threshold simulation for stocks and exchange-traded funds.
 - Background refresh while the local server is running, plus Server-Sent Events for dashboard updates.
 
 The default `hybrid` provider uses Yahoo Finance on a best-effort basis for exchange-traded assets and Eastmoney for OTC fund search and official NAV history. If a network request or supported symbol is unavailable, the application may fall back to clearly labelled deterministic demo data. These sources are suitable for local prototyping only; use a licensed provider and review redistribution terms before any public release.

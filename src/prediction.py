@@ -16,6 +16,7 @@ import numpy as np
 
 HORIZONS = (1, 3, 5, 20)
 MODEL_VERSION = "transparent-momentum-v1"
+OTC_FUND_MODEL_VERSION = "otc-nav-direction-v1"
 
 
 def _clean_prices(values: Iterable[float]) -> list[float]:
@@ -113,6 +114,51 @@ def predict_trends(prices: Iterable[float], current_price: float | None = None) 
     return [_one_prediction(cleaned, horizon) for horizon in HORIZONS]
 
 
+def _one_otc_fund_prediction(prices: list[float], horizon: int) -> dict:
+    """Predict a future published NAV relative to the current published NAV.
+
+    An OTC fund has one official NAV per trading day rather than a tradable
+    intraday open. The current NAV therefore serves as the forecast period's
+    start reference, and the NAV published after ``horizon`` trading days is
+    its end value.
+    """
+
+    prediction = _one_prediction(prices, horizon)
+    directional_total = prediction["probability_up"] + prediction["probability_down"]
+    if directional_total <= 0:
+        probability_up = probability_down = 0.5
+    else:
+        probability_up = prediction["probability_up"] / directional_total
+        probability_down = prediction["probability_down"] / directional_total
+    maximum = max(probability_up, probability_down)
+    prediction.update(
+        {
+            "probability_up": probability_up,
+            "probability_flat": 0.0,
+            "probability_down": probability_down,
+            "confidence": "high" if maximum >= 0.68 else "medium" if maximum >= 0.58 else "low",
+            "target_definition": "period_end_nav_vs_period_start_nav",
+        }
+    )
+    return prediction
+
+
+def predict_otc_fund_direction(
+    prices: Iterable[float],
+    current_price: float | None = None,
+) -> list[dict]:
+    """Return binary direction forecasts for each OTC-fund horizon."""
+
+    cleaned = _clean_prices(prices)
+    if current_price is not None and float(current_price) > 0:
+        current = float(current_price)
+        if not cleaned or not math.isclose(cleaned[-1], current, rel_tol=1e-10):
+            cleaned.append(current)
+    if len(cleaned) < 25:
+        return []
+    return [_one_otc_fund_prediction(cleaned, horizon) for horizon in HORIZONS]
+
+
 def risk_metrics(prices: Iterable[float]) -> dict:
     cleaned = _clean_prices(prices)
     if len(cleaned) < 3:
@@ -180,6 +226,68 @@ def backtest(prices: Iterable[float], max_samples: int = 260) -> dict[str, dict]
         correct = sum(p == a for p, a in zip(predicted_labels, actual_labels))
         recalls = []
         for label in ("up", "flat", "down"):
+            actual_count = sum(value == label for value in actual_labels)
+            if actual_count:
+                recalls.append(
+                    sum(p == label and a == label for p, a in zip(predicted_labels, actual_labels))
+                    / actual_count
+                )
+        output[str(horizon)] = {
+            "sample_count": sample_count,
+            "accuracy": correct / sample_count * 100 if sample_count else None,
+            "balanced_accuracy": float(np.mean(recalls) * 100) if recalls else None,
+            "high_confidence_accuracy": (
+                high_confidence_correct / high_confidence_count * 100
+                if high_confidence_count
+                else None
+            ),
+            "high_confidence_coverage": (
+                high_confidence_count / sample_count * 100 if sample_count else None
+            ),
+            "actual_distribution": dict(Counter(actual_labels)),
+        }
+    return output
+
+
+def backtest_otc_fund_direction(
+    prices: Iterable[float],
+    max_samples: int = 260,
+) -> dict[str, dict]:
+    """Walk-forward test period-end versus period-start OTC NAV direction."""
+
+    cleaned = _clean_prices(prices)
+    if len(cleaned) < 90:
+        return {}
+
+    output: dict[str, dict] = {}
+    for horizon in HORIZONS:
+        start = max(60, len(cleaned) - max_samples - horizon)
+        predicted_labels: list[str] = []
+        actual_labels: list[str] = []
+        high_confidence_correct = 0
+        high_confidence_count = 0
+        for index in range(start, len(cleaned) - horizon):
+            actual_return = cleaned[index + horizon] / cleaned[index] - 1
+            # Unchanged NAV observations do not have an up/down ground-truth label.
+            if math.isclose(actual_return, 0.0, abs_tol=1e-12):
+                continue
+            prediction = _one_otc_fund_prediction(cleaned[: index + 1], horizon)
+            probabilities = {
+                "up": prediction["probability_up"],
+                "down": prediction["probability_down"],
+            }
+            predicted = max(probabilities, key=probabilities.get)
+            actual = "up" if actual_return > 0 else "down"
+            predicted_labels.append(predicted)
+            actual_labels.append(actual)
+            if max(probabilities.values()) >= 0.58:
+                high_confidence_count += 1
+                high_confidence_correct += int(predicted == actual)
+
+        sample_count = len(actual_labels)
+        correct = sum(p == a for p, a in zip(predicted_labels, actual_labels))
+        recalls = []
+        for label in ("up", "down"):
             actual_count = sum(value == label for value in actual_labels)
             if actual_count:
                 recalls.append(

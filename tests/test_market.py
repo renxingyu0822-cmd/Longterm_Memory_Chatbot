@@ -12,7 +12,15 @@ sys.path.insert(0, str(SRC_DIR))
 from market_data import DemoMarketDataProvider, EastmoneyFundProvider, MarketDataError  # noqa: E402
 from market_db import MarketDatabase  # noqa: E402
 from market_service import MarketService, service as route_service  # noqa: E402
-from prediction import HORIZONS, backtest, predict_trends, risk_metrics, simulate_probability_strategy  # noqa: E402
+from prediction import (  # noqa: E402
+    HORIZONS,
+    backtest,
+    backtest_otc_fund_direction,
+    predict_otc_fund_direction,
+    predict_trends,
+    risk_metrics,
+    simulate_probability_strategy,
+)
 
 
 ASSET = {
@@ -216,6 +224,46 @@ class MarketDatabaseTests(unittest.TestCase):
         self.assertEqual(latest[0]["base_price"], 0.8302)
         self.assertEqual(latest[0]["expected_high"], 2)
 
+    def test_legacy_otc_predictions_are_exposed_as_binary_for_every_horizon(self):
+        fund = self.db.ensure_asset(
+            {
+                "symbol": "110022",
+                "provider_symbol": "110022.OF",
+                "name": "易方达消费行业股票",
+                "asset_class": "fund",
+                "subclass": "otc",
+                "market": "CN",
+                "exchange": "OTC",
+                "currency": "CNY",
+            }
+        )
+        quote_time = "2026-07-24T20:00:00+08:00"
+        self.db.upsert_quote(
+            fund["id"],
+            {"price": 3.6, "currency": "CNY", "quote_time": quote_time, "source": "test"},
+        )
+        legacy_predictions = [
+            {
+                "horizon_days": horizon,
+                "probability_up": 0.4,
+                "probability_flat": 0.4,
+                "probability_down": 0.2,
+                "expected_low": -2,
+                "expected_high": 2,
+                "confidence": "low",
+            }
+            for horizon in HORIZONS
+        ]
+        self.db.save_predictions(fund["id"], quote_time, 3.6, legacy_predictions, "legacy")
+
+        latest = self.db.latest_predictions(fund["id"])
+
+        self.assertEqual([item["horizon_days"] for item in latest], list(HORIZONS))
+        self.assertTrue(all(item["probability_flat"] == 0 for item in latest))
+        self.assertTrue(
+            all(abs(item["probability_up"] + item["probability_down"] - 1) < 1e-12 for item in latest)
+        )
+
 
 class PredictionTests(unittest.TestCase):
     def setUp(self):
@@ -239,6 +287,26 @@ class PredictionTests(unittest.TestCase):
         simulation = simulate_probability_strategy(self.prices)
         self.assertIn("strategy_return", simulation)
         self.assertEqual(simulation["disclaimer"], "历史模拟，不代表未来收益")
+
+    def test_otc_fund_horizons_are_binary_period_end_directions(self):
+        fund = self.provider.search("110022", "fund", "otc")[0]
+        prices = [bar["close"] for bar in self.provider.history(fund, 360)]
+
+        predictions = predict_otc_fund_direction(prices)
+
+        self.assertEqual([item["horizon_days"] for item in predictions], list(HORIZONS))
+        for item in predictions:
+            self.assertEqual(item["probability_flat"], 0.0)
+            self.assertAlmostEqual(item["probability_up"] + item["probability_down"], 1.0)
+            self.assertEqual(
+                item["target_definition"],
+                "period_end_nav_vs_period_start_nav",
+            )
+        performance = backtest_otc_fund_direction(prices)
+        self.assertEqual(set(performance), {"1", "3", "5", "20"})
+        self.assertTrue(
+            all(set(item["actual_distribution"]).issubset({"up", "down"}) for item in performance.values())
+        )
 
 
 class DemoMarketDataProviderTests(unittest.TestCase):
@@ -308,6 +376,27 @@ class MarketServiceTests(unittest.TestCase):
         dashboard = self.service.dashboard(refresh_missing=False)
         self.assertEqual(len(dashboard["positions"]), 1)
         self.assertEqual(len(dashboard["watchlist_only"]), 0)
+
+    def test_otc_fund_predictions_have_four_binary_end_vs_start_horizons(self):
+        result = self.service.search("110022", "fund", "otc")[0]
+
+        item = self.service.add_watchlist({"asset": result})
+
+        self.assertEqual(
+            [prediction["horizon_days"] for prediction in item["predictions"]],
+            list(HORIZONS),
+        )
+        self.assertTrue(
+            all(prediction["probability_flat"] == 0 for prediction in item["predictions"])
+        )
+        self.assertTrue(
+            all(
+                abs(prediction["probability_up"] + prediction["probability_down"] - 1) < 1e-12
+                for prediction in item["predictions"]
+            )
+        )
+        self.assertEqual(set(item["performance"]), {"1", "3", "5", "20"})
+        self.assertEqual(item["simulation"], {})
 
     def test_import_matches_fund_name_with_omitted_launch_marker(self):
         candidates = [

@@ -165,3 +165,28 @@
 - Exercise imports using representative broker screenshots and exports, especially ambiguous names, duplicate rows, multiple share classes, and partially invalid files.
 - Verify session recovery and transaction drafts across refreshes and navigation on both desktop and mobile browsers.
 - Replace prototype market sources with licensed providers before any public release.
+
+---
+
+## 2026-07-26 — OTC Fund Prediction Semantics and Automatic Diary Logging
+
+**What I worked on:**
+
+- Clarified that the prediction change applies specifically to OTC funds rather than stocks or exchange-traded funds.
+- Required all 1-, 3-, 5-, and 20-trading-day OTC-fund predictions to compare the official NAV at the end of the forecast period with the official NAV at its start.
+- Required every OTC-fund horizon to show only `up` or `down`, with no neutral/flat outcome.
+- Asked Codex to start the local project, verify the chat and investment pages, and keep only one Flask listener on port `8080`.
+- Instructed Codex to automatically record future user operations in `diary/IMMFlight.md` and project changes in `diary/shared.md`.
+
+**Decisions made:**
+
+- Preserve all four forecast horizons for OTC funds while making each horizon binary.
+- Exclude unchanged-NAV observations from binary backtest accuracy instead of forcing them into either direction.
+- Persist the automatic diary rule in the repository-level `AGENTS.md` so it applies in future project sessions.
+- Limit automatic logging to substantive project operations; title-only and similar lightweight requests are not recorded.
+- Keep secrets and credentials out of both diary files.
+
+**Operational outcome:**
+
+- The updated investment behavior passed all 20 focused market tests, along with Python compilation and frontend JavaScript syntax checks.
+- The project was started at `http://127.0.0.1:8080`; duplicate old Flask processes were removed and one verified listener was retained.

@@ -10,7 +10,16 @@ from typing import Any
 
 from market_data import MarketDataError, provider
 from market_db import DEFAULT_OWNER, MarketDatabase
-from prediction import MODEL_VERSION, backtest, predict_trends, risk_metrics, simulate_probability_strategy
+from prediction import (
+    MODEL_VERSION,
+    OTC_FUND_MODEL_VERSION,
+    backtest,
+    backtest_otc_fund_direction,
+    predict_otc_fund_direction,
+    predict_trends,
+    risk_metrics,
+    simulate_probability_strategy,
+)
 
 
 class MarketService:
@@ -252,14 +261,19 @@ class MarketService:
                         raise
             bars = self.db.get_daily_bars(asset_id, limit=520)
             prices = [float(bar["close"]) for bar in bars]
-            predictions = predict_trends(prices, float(quote["price"]))
+            is_otc_fund = asset.get("subclass") == "otc"
+            predictions = (
+                predict_otc_fund_direction(prices, float(quote["price"]))
+                if is_otc_fund
+                else predict_trends(prices, float(quote["price"]))
+            )
             if predictions:
                 self.db.save_predictions(
                     asset_id,
                     str(quote["quote_time"]),
                     float(quote["price"]),
                     predictions,
-                    MODEL_VERSION,
+                    OTC_FUND_MODEL_VERSION if is_otc_fund else MODEL_VERSION,
                 )
             analysis = self._compose_asset(asset, bars, predictions)
             self._analysis_cache[asset_id] = (time.time(), analysis)
@@ -277,13 +291,16 @@ class MarketService:
         prices = [float(bar["close"]) for bar in bars]
         if predictions is None:
             predictions = self.db.latest_predictions(asset_id)
+        is_otc_fund = asset.get("subclass") == "otc"
         output = {
             **self._public_asset(asset),
             "quote": quote,
             "predictions": predictions,
             "risk": risk_metrics(prices),
-            "performance": backtest(prices),
-            "simulation": simulate_probability_strategy(prices),
+            "performance": (
+                backtest_otc_fund_direction(prices) if is_otc_fund else backtest(prices)
+            ),
+            "simulation": {} if is_otc_fund else simulate_probability_strategy(prices),
             "history": [
                 {
                     "date": bar["bar_date"],

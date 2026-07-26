@@ -434,22 +434,25 @@ class MarketDatabase:
 
     def latest_predictions(self, asset_id: int) -> list[dict[str, Any]]:
         quote = self.get_quote(asset_id)
+        asset = self.get_asset(asset_id)
+        is_otc_fund = bool(asset and asset.get("subclass") == "otc")
         with self.connect() as connection:
             rows = []
             if quote:
                 candidates = connection.execute(
                     """SELECT * FROM predictions
                        WHERE asset_id=? AND quote_time=?
-                       ORDER BY horizon_days""",
+                       ORDER BY id DESC""",
                     (asset_id, quote["quote_time"]),
                 ).fetchall()
                 quote_price = float(quote["price"])
                 tolerance = max(1e-8, abs(quote_price) * 1e-8)
-                rows = [
-                    row
-                    for row in candidates
-                    if abs(float(row["base_price"]) - quote_price) <= tolerance
-                ]
+                latest_by_horizon = {}
+                for row in candidates:
+                    horizon = int(row["horizon_days"])
+                    if abs(float(row["base_price"]) - quote_price) <= tolerance:
+                        latest_by_horizon.setdefault(horizon, row)
+                rows = [latest_by_horizon[key] for key in sorted(latest_by_horizon)]
             if not rows:
                 rows = connection.execute(
                     """
@@ -462,7 +465,19 @@ class MarketDatabase:
                     """,
                     (asset_id,),
                 ).fetchall()
-        return [dict(row) for row in rows]
+        output = [dict(row) for row in rows]
+        if is_otc_fund:
+            # Normalize legacy rows so the public contract is binary
+            # even before the next background refresh writes the new model.
+            for item in output:
+                directional_total = float(item["probability_up"]) + float(item["probability_down"])
+                if directional_total > 0:
+                    item["probability_up"] = float(item["probability_up"]) / directional_total
+                    item["probability_down"] = float(item["probability_down"]) / directional_total
+                else:
+                    item["probability_up"] = item["probability_down"] = 0.5
+                item["probability_flat"] = 0.0
+        return output
 
     def _quantity_for_asset(self, asset_id: int, owner_id: str) -> float:
         quantity = 0.0

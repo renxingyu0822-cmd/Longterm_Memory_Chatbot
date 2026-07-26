@@ -444,3 +444,26 @@ LLM Response
 
 - Ran `python -m unittest tests.test_market tests.test_portfolio_import -v`; all 24 focused market and portfolio-import tests passed.
 - Full `unittest` discovery ran 42 tests and reported 7 failures plus 1 error outside the focused investment suite. The failures expose chat/memory test-isolation issues—unintended live OpenAI calls—and an outdated XSS assertion that rejects the memory page's own legitimate `<script>` elements.
+
+### OTC Fund Binary Period-Direction Predictions
+
+**Prediction behavior:**
+
+- Added a dedicated `otc-nav-direction-v1` prediction path for OTC funds while leaving stocks and exchange-traded funds on the existing model.
+- Preserved the 1-, 3-, 5-, and 20-trading-day horizons for OTC funds.
+- Changed every OTC-fund horizon to a binary `up` / `down` probability whose target is the official NAV at the end of the period relative to the official NAV at its start.
+- Added matching walk-forward backtests; observations with unchanged start and end NAVs are excluded because they have no binary ground-truth label.
+- Disabled the existing exchange-trading strategy simulation for OTC-fund detail pages because it does not use the OTC NAV prediction contract.
+
+**Persistence and interface:**
+
+- Updated prediction retrieval to select the newest matching model record per horizon and normalize legacy OTC prediction rows into binary probabilities immediately.
+- Updated dashboard chips, asset-detail cards, explanatory copy, model metadata, and README documentation so OTC funds never present a neutral/flat prediction.
+- Added repository-level `AGENTS.md` instructions requiring automatic logging of user operations to `diary/IMMFlight.md` and project changes to `diary/shared.md`, without recording secrets.
+- Refined the diary rule so lightweight, non-project requests such as title or wording suggestions are not logged.
+
+**Verification:**
+
+- Expanded the market suite with OTC horizon, target-definition, binary probability, backtest, service, and legacy-record coverage.
+- Ran `python -m unittest tests.test_market -v`; all 20 market tests passed.
+- Python compilation, frontend JavaScript syntax checks, and `git diff --check` passed.

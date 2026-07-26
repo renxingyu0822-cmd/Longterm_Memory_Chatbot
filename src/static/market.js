@@ -104,13 +104,15 @@ function applyWorkspaceState() {
   });
 }
 
-function predictionLabel(item) {
+function predictionLabel(item, asset) {
   if (!item) return "暂无预测";
-  const probabilities = [
-    ["上涨", Number(item.probability_up)],
-    ["震荡", Number(item.probability_flat)],
-    ["下跌", Number(item.probability_down)],
-  ];
+  const isOtcFund = asset?.subclass === "otc";
+  const up = Number(item.probability_up);
+  const down = Number(item.probability_down);
+  const directionalTotal = up + down;
+  const probabilities = isOtcFund
+    ? [["上涨", directionalTotal > 0 ? up / directionalTotal : 0.5], ["下跌", directionalTotal > 0 ? down / directionalTotal : 0.5]]
+    : [["上涨", up], ["震荡", Number(item.probability_flat)], ["下跌", down]];
   const winner = probabilities.sort((a, b) => b[1] - a[1])[0];
   return `${item.horizon_days}日 ${winner[0]} ${Math.round(winner[1] * 100)}%`;
 }
@@ -144,7 +146,7 @@ function rowHtml(item, isPosition) {
   const priceLabel = item.asset_class === "fund"
     ? (item.subclass === "otc" ? "最新单位净值" : "基金最新价")
     : "最新价";
-  const predictions = (item.predictions || []).map(value => `<span class="prediction-chip">${escapeHtml(predictionLabel(value))}</span>`).join("");
+  const predictions = (item.predictions || []).map(value => `<span class="prediction-chip">${escapeHtml(predictionLabel(value, item))}</span>`).join("");
   const positionMeta = isPosition
     ? `<div class="profit ${directionClass(item.total_profit)}">总收益 ${formatNumber(item.total_profit)} ${escapeHtml(item.currency)} · ${formatPercent(item.return_percent)}</div>`
     : `<div class="asset-change ${directionClass(change)}">${formatPercent(change)}</div>`;
