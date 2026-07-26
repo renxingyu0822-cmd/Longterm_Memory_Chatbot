@@ -414,28 +414,54 @@ class MarketDatabase:
         with self.connect() as connection:
             connection.executemany(
                 """
-                INSERT OR IGNORE INTO predictions(
+                INSERT INTO predictions(
                     asset_id, generated_at, quote_time, base_price, horizon_days,
                     probability_up, probability_flat, probability_down,
                     expected_low, expected_high, confidence, model_version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(asset_id, quote_time, horizon_days, model_version) DO UPDATE SET
+                    generated_at=excluded.generated_at,
+                    base_price=excluded.base_price,
+                    probability_up=excluded.probability_up,
+                    probability_flat=excluded.probability_flat,
+                    probability_down=excluded.probability_down,
+                    expected_low=excluded.expected_low,
+                    expected_high=excluded.expected_high,
+                    confidence=excluded.confidence
                 """,
                 records,
             )
 
     def latest_predictions(self, asset_id: int) -> list[dict[str, Any]]:
+        quote = self.get_quote(asset_id)
         with self.connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT p.* FROM predictions p
-                JOIN (
-                    SELECT horizon_days, MAX(id) AS max_id
-                    FROM predictions WHERE asset_id=? GROUP BY horizon_days
-                ) latest ON latest.max_id=p.id
-                ORDER BY p.horizon_days
-                """,
-                (asset_id,),
-            ).fetchall()
+            rows = []
+            if quote:
+                candidates = connection.execute(
+                    """SELECT * FROM predictions
+                       WHERE asset_id=? AND quote_time=?
+                       ORDER BY horizon_days""",
+                    (asset_id, quote["quote_time"]),
+                ).fetchall()
+                quote_price = float(quote["price"])
+                tolerance = max(1e-8, abs(quote_price) * 1e-8)
+                rows = [
+                    row
+                    for row in candidates
+                    if abs(float(row["base_price"]) - quote_price) <= tolerance
+                ]
+            if not rows:
+                rows = connection.execute(
+                    """
+                    SELECT p.* FROM predictions p
+                    JOIN (
+                        SELECT horizon_days, MAX(id) AS max_id
+                        FROM predictions WHERE asset_id=? GROUP BY horizon_days
+                    ) latest ON latest.max_id=p.id
+                    ORDER BY p.horizon_days
+                    """,
+                    (asset_id,),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def _quantity_for_asset(self, asset_id: int, owner_id: str) -> float:
@@ -519,6 +545,13 @@ class MarketDatabase:
                 """,
                 values,
             )
+            if kind in {"buy", "subscribe"}:
+                connection.execute(
+                    """INSERT INTO watchlists(owner_id, asset_id, group_name, created_at)
+                       VALUES (?, ?, '默认', ?)
+                       ON CONFLICT(owner_id, asset_id) DO NOTHING""",
+                    (owner_id, asset_id, created_at),
+                )
         return self.get_transaction(transaction_id)  # type: ignore[return-value]
 
     def get_transaction(self, transaction_id: str) -> dict[str, Any] | None:

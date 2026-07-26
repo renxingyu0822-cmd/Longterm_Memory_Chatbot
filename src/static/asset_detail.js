@@ -49,12 +49,20 @@ function renderBacktest(performance) {
 
 function render(data) {
   const quote = data.quote || {};
+  const isFund = data.asset_class === "fund";
+  const isOtcFund = isFund && data.subclass === "otc";
   $("#asset-title").textContent = data.name;
   document.title = `Thumper · ${data.name}`;
   $("#asset-meta").textContent = `${data.symbol} · ${subclassLabel(data.subclass)} · ${data.exchange || data.market} · ${data.currency}`;
   $("#asset-source").textContent = quote.source === "demo" ? "当前为演示数据，仅用于验证功能，不可用于投资判断。" : "概率、回测和模拟均为研究工具，不构成投资建议。";
   $("#detail-price").textContent = `${number(quote.price, quote.price < 10 ? 4 : 2)} ${quote.currency || data.currency}`;
-  $("#detail-quote-meta").textContent = `行情时间 ${quote.quote_time || "—"} · 涨跌 ${percent(quote.change_percent)} · ${quote.is_delayed ? "延迟/净值数据" : "实时"}`;
+  if (isOtcFund) {
+    $("#detail-quote-meta").textContent = `净值日期 ${quote.quote_time || "—"} · 场外基金正式单位净值 · 延迟公布`;
+  } else if (isFund) {
+    $("#detail-quote-meta").textContent = `行情时间 ${quote.quote_time || "—"} · 涨跌 ${percent(quote.change_percent)} · 场内基金行情`;
+  } else {
+    $("#detail-quote-meta").textContent = `行情时间 ${quote.quote_time || "—"} · 涨跌 ${percent(quote.change_percent)} · ${quote.is_delayed ? "延迟行情" : "实时行情"}`;
+  }
   renderChart(data.history || []);
   renderPredictions(data.predictions || []);
   renderBacktest(data.performance || {});
@@ -64,7 +72,7 @@ function render(data) {
   $("#detail-risk").innerHTML = metric("风险等级", riskLabel) + metric("年化波动率", percent(risk.annualized_volatility, false)) + metric("最大回撤", percent(risk.max_drawdown)) + metric("下跌日占比", percent(risk.downside_frequency, false));
   const simulation = data.simulation || {};
   $("#detail-simulation").innerHTML = Object.keys(simulation).length ? metric("策略收益", percent(simulation.strategy_return)) + metric("买入持有", percent(simulation.buy_hold_return)) + metric("超额收益", percent(simulation.excess_return)) + metric("最大回撤", percent(simulation.max_drawdown)) + metric("交易成本", percent((simulation.transaction_cost || 0) * 100, false)) : metric("状态", "样本不足");
-  $("#detail-data").innerHTML = metric("行情来源", quote.source || data.source || "—") + metric("行情时间", quote.quote_time || "—") + metric("接收时间", quote.received_at || "—") + metric("模型版本", (data.predictions || [])[0]?.model_version || "transparent-momentum-v1") + metric("历史样本", String((data.history || []).length));
+  $("#detail-data").innerHTML = metric("资产类型", subclassLabel(data.subclass)) + metric(isOtcFund ? "净值来源" : "行情来源", quote.source || data.source || "—") + metric(isOtcFund ? "净值日期" : "行情时间", quote.quote_time || "—") + metric("接收时间", quote.received_at || "—") + metric("模型版本", (data.predictions || [])[0]?.model_version || "transparent-momentum-v1") + metric("历史样本", String((data.history || []).length));
 }
 
 async function load(refresh = false) {

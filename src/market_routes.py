@@ -9,6 +9,7 @@ from flask import Blueprint, Response, jsonify, render_template, request, stream
 
 from market_db import DEFAULT_OWNER
 from market_service import service
+from portfolio_import import MAX_IMPORT_BYTES, parse_import_file
 
 
 market_blueprint = Blueprint("market", __name__)
@@ -103,6 +104,31 @@ def portfolio_summary():
     return jsonify(service.db.portfolio_summary(DEFAULT_OWNER))
 
 
+@market_blueprint.route("/api/portfolio/import", methods=["POST"])
+def import_portfolio():
+    uploaded = request.files.get("file")
+    target = str(request.form.get("target") or "").strip()
+    if uploaded is None or not uploaded.filename:
+        return jsonify({"error": "请选择要导入的图片或文件"}), 400
+    try:
+        data = uploaded.stream.read(MAX_IMPORT_BYTES + 1)
+        rows = parse_import_file(
+            uploaded.filename,
+            uploaded.mimetype or "application/octet-stream",
+            data,
+            target,
+        )
+        result = service.import_portfolio_rows(rows, target, DEFAULT_OWNER)
+        result["dashboard"] = service.dashboard(DEFAULT_OWNER, refresh_missing=False)
+        return jsonify(result), 201
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 502
+    except Exception:
+        return jsonify({"error": "导入失败，请检查文件内容后重试"}), 500
+
+
 @market_blueprint.route("/api/portfolio/transactions", methods=["GET", "POST"])
 def transactions():
     if request.method == "GET":
@@ -136,4 +162,3 @@ def market_stream():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-

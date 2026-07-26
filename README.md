@@ -1,165 +1,228 @@
 # Thumper — Long-Term Memory Chatbot
 
-A conversational AI agent with long-term memory that continuously learns from user interactions, stores knowledge, and retrieves relevant memories to generate personalized, context-aware responses over time.
+Thumper is a local-first conversational companion with persistent long-term memory and a personal investment research workspace. It combines an OpenAI-powered chat experience, Chroma-based memory retrieval, and a SQLite-backed stock and fund tracker in one Flask application.
 
-## Current Status
+> The investment features are experimental research tools. They are not investment advice, trading signals, or promises of future performance.
 
-**Phase 5 complete:** Conversation timing overhauled and reply polish applied.
+## Current Features
 
-- **Deterministic reply hold:** After the LLM returns a reply, Thumper waits a silent 0.5 s, then holds until the user has been idle for 5 s (empty input) or 20 s (input has draft text) before showing the response. No more random cut-ins.
-- **Silent WAIT state:** When the LLM decides to wait for more context, nothing is shown — no typing indicator, no message. The send button stays enabled. A nudge fires after 60 s of silence.
-- **Typing indicator only on actual replies:** The "Typing…" bubble now appears inside `showBlocks` immediately before each reply bubble, so it never flashes and disappears during WAIT or LLM processing.
-- **No lost messages:** Messages sent while a reply is being processed are preserved in the buffer and trigger their own follow-up callChat, preventing questions from being silently dropped or deferred across rounds.
-- **Trailing question suppression:** A `drop_trailing_question()` post-processing step removes standalone question bubbles that the LLM tacks on to every response, backed by a strengthened system prompt.
-- **ACTION prefix robustness:** The backend regex now catches Chinese-translated variants of `ACTION: WAIT/REPLY` (`行动：等待` etc.) so they are never shown as raw text in the chat.
-- **Settings overlay:** Gear button opens a language-switcher modal mid-conversation without clearing the chat log.
-- Message batching (800 ms debounce), `callChatInProgress` mutex, multi-bubble replies, and the full memory system remain in place from Phase 4.
-- Next: memory consolidation — promote stable, repeatedly accessed `episodic` memories to `core`.
+### Conversation and memory
+
+- Natural multi-message chat with an 800 ms batching window, multi-bubble replies, and a silent `WAIT` state when the user appears to be mid-thought.
+- Deterministic reply timing: after the model responds, the UI waits for the user to be idle before displaying the reply, without dropping messages sent during processing.
+- English, Simplified Chinese, and German chat modes, switchable during a conversation.
+- Automatic extraction of durable facts and recent events with `gpt-4o-mini`.
+- Semantic retrieval with `text-embedding-3-small` and a local persistent Chroma collection.
+- Two memory categories: permanent `core` memories and decaying `episodic` memories.
+- Relative dates such as “tomorrow” and “明天” are resolved to a concrete date when the memory is recorded.
+- A memory dashboard with demo data, importance display, and manual deletion.
+
+### Investment workspace
+
+Open `http://localhost:8080/market`, or select **Investments / 投资** in the chat header.
+
+- Separate views for A-shares, Hong Kong stocks, U.S. stocks, exchange-traded funds, and OTC funds.
+- Portfolio and watchlist-only views. Every held asset is also included in the watchlist.
+- Search by symbol or name, then add an asset to the watchlist or record a position.
+- Immutable buy, sell, subscription, redemption, dividend, and fee records.
+- Automatic weighted-average cost, realized profit, unrealized profit, dividends, fees, and total-return calculations.
+- One-click portfolio or watchlist import from screenshots, PDF/Word documents, CSV/TSV/TXT/JSON, and XLS/XLSX files.
+- Experimental up / flat / down probabilities for 1, 3, 5, and 20 trading-day horizons.
+- Asset detail pages with price history, risk metrics, walk-forward backtests, and a cost-aware probability-threshold simulation.
+- Background refresh while the local server is running, plus Server-Sent Events for dashboard updates.
+
+The default `hybrid` provider uses Yahoo Finance on a best-effort basis for exchange-traded assets and Eastmoney for OTC fund search and official NAV history. If a network request or supported symbol is unavailable, the application may fall back to clearly labelled deterministic demo data. These sources are suitable for local prototyping only; use a licensed provider and review redistribution terms before any public release.
+
+OTC funds do not have exchange-traded real-time prices. Their latest officially published NAV is treated as delayed data. An unknown OTC fund is never assigned a stock-like simulated intraday price.
 
 ## Tech Stack
 
-- **LLM:** GPT-4o-mini (OpenAI)
-- **Embeddings:** text-embedding-3-small (OpenAI)
-- **Vector DB:** Chroma (local, persistent)
-- **Backend:** Python + Flask
-- **Frontend:** HTML/CSS/JS (served by Flask)
-- **Investment data:** SQLite + a replaceable market-data provider
-
-## Investment Workspace
-
-Open **http://localhost:8080/market** or use the **Investments / 投资** button in the chat header.
-
-The local investment workspace includes:
-
-- Separate stock and fund areas: A-shares, Hong Kong stocks, U.S. stocks, exchange-traded funds, and OTC funds.
-- Independent watchlist and portfolio views. An asset can be watched without being held.
-- Immutable buy, sell, subscription, redemption, dividend, and fee records.
-- Automatic weighted-average cost, realized profit, unrealized profit, dividends, and total-return calculations.
-- Experimental 1, 3, 5, and 20 trading-day up / flat / down probabilities.
-- Risk metrics, walk-forward backtest statistics, and a cost-aware probability-threshold simulation.
-- Server-Sent Events and a background tracker that refresh followed assets while the local server is running.
-
-The default `hybrid` mode tries a best-effort Yahoo Finance prototype source and falls back to clearly labelled deterministic demo data when a symbol or network connection is unavailable. Yahoo data may be delayed and is suitable only for local prototyping. Before any public release, replace it with a licensed provider and review redistribution terms.
-
-OTC funds do not have an exchange-traded real-time price. The workspace treats their latest officially published NAV as delayed data and never labels a simulated intraday estimate as an official NAV.
-
-Optional `.env` settings:
-
-```bash
-MARKET_DATA_PROVIDER=hybrid  # hybrid or demo
-MARKET_REFRESH_SECONDS=60
-THUMPER_HOST=127.0.0.1
-THUMPER_PORT=8080
-THUMPER_DEBUG=1
-```
-
-Predictions and simulations are experimental research outputs, not investment advice or promises of future performance.
-
-## Project Structure
-
-```
-├── diary/                  # Work diary (open in Obsidian)
-│   ├── dafei.md
-│   ├── IMMFlight.md
-│   └── shared.md
-├── tests/                  # Unit tests
-│   └── test_app.py
-└── src/                    # Source code
-    ├── app.py              # Flask web server
-    ├── memory.py           # Memory extraction, storage, retrieval, and forgetting
-    ├── requirements.txt
-    ├── chroma_db/          # Persistent vector database (auto-created, git-ignored)
-    ├── static/
-    │   └── thumper.png     # Chatbot avatar
-    └── templates/
-        ├── index.html      # Chat UI (language picker + chat)
-        └── memories.html   # Memory dashboard (core + episodic)
-```
+- **Backend:** Python 3.10+ and Flask
+- **Chat and memory extraction:** `gpt-4o-mini`
+- **Embeddings:** `text-embedding-3-small`
+- **Memory store:** Chroma, persisted locally
+- **Investment store:** SQLite
+- **Market data:** replaceable hybrid provider (Yahoo Finance, Eastmoney, and labelled demo fallback)
+- **Frontend:** server-rendered HTML with vanilla CSS and JavaScript
 
 ## Getting Started
 
+### 1. Clone and enter the project
+
 ```bash
-# 1. Clone the repo
 git clone https://github.com/renxingyu0822-cmd/Longterm_Memory_Chatbot.git
 cd Longterm_Memory_Chatbot
-
-# 2. Install dependencies
-pip3 install -r src/requirements.txt
-
-# 3. Add your OpenAI API key
-cp src/.env.example src/.env
-# edit src/.env and paste your key
-
-# 4. Run the web app
-cd src
-python3 app.py
 ```
 
-Then open **http://localhost:8080** in your browser.
+### 2. Create an environment and install dependencies
 
-A language selection screen appears on the first load of each session. The chosen language is used for both the chat and the memories page.
+```bash
+python -m venv .venv
+python -m pip install -r src/requirements.txt
+```
 
-To inspect stored memories, click the **🧠 Memories** button in the chat header, or go to **http://localhost:8080/memories** directly.
+Activate the virtual environment using the command for your shell if needed. For PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### 3. Configure the application
+
+Copy the example environment file and add your OpenAI API key:
+
+```bash
+cp src/.env.example src/.env
+```
+
+On PowerShell:
+
+```powershell
+Copy-Item src/.env.example src/.env
+```
+
+At minimum, set:
+
+```dotenv
+OPENAI_API_KEY=your_api_key_here
+```
+
+The API key is required for chat, embeddings, memory extraction, and image/rich-document portfolio imports. Delimited text, JSON, and XLSX imports are parsed locally.
+
+### 4. Run the web application
+
+```bash
+cd src
+python app.py
+```
+
+Then open:
+
+- Chat: `http://localhost:8080`
+- Memories: `http://localhost:8080/memories`
+- Investment workspace: `http://localhost:8080/market`
+
+The background market tracker starts when `src/app.py` is run directly. Chat conversation history is kept in process memory and is cleared when the server restarts; extracted memories and investment data persist locally.
+
+## Configuration
+
+All settings are optional except `OPENAI_API_KEY`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | — | OpenAI authentication for chat, embeddings, memory extraction, and AI-assisted imports |
+| `PORTFOLIO_IMPORT_MODEL` | `gpt-5.6-luna` | Responses API model used for screenshots, PDF, Word, and legacy XLS files |
+| `MARKET_DATA_PROVIDER` | `hybrid` | `hybrid` for network sources with demo fallback, or `demo` for deterministic offline data |
+| `MARKET_DB_PATH` | `src/data/investment.db` | Custom SQLite database path |
+| `MARKET_QUOTE_CACHE_SECONDS` | `30` | Quote cache lifetime for network-backed market data |
+| `MARKET_REFRESH_SECONDS` | `60` | Background tracker interval; values below 15 seconds are raised to 15 |
+| `THUMPER_HOST` | `127.0.0.1` | Flask bind address |
+| `THUMPER_PORT` | `8080` | Flask port |
+| `THUMPER_DEBUG` | `1` | Enable Flask debug mode when set to `1` |
+
+For an offline investment demo, set `MARKET_DATA_PROVIDER=demo`. Chat and memory features still require OpenAI access.
+
+## Portfolio Import
+
+The import UI can create either current holdings or watchlist-only entries.
+
+- Maximum file size: 15 MB.
+- Maximum normalized rows per import: 500.
+- Locally parsed: `.csv`, `.tsv`, `.txt`, `.json`, and `.xlsx`.
+- OpenAI-assisted: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.pdf`, `.doc`, `.docx`, and `.xls`.
+- A watchlist import needs a symbol or name.
+- A holdings import also needs a positive quantity and average cost price.
+
+CSV and spreadsheet columns may use common English or Chinese headers. A minimal holdings CSV looks like this:
+
+```csv
+symbol,name,quantity,cost_price,asset_class,subclass,currency,occurred_at
+600519,贵州茅台,10,1450,stock,cn,CNY,2026-07-01
+AAPL,Apple,5,210,stock,us,USD,2026-07-02
+```
+
+Accepted subclass values are `cn`, `hk`, `us`, `exchange_traded`, and `otc`; common labels such as `A股`, `港股`, `美股`, `ETF`, `场内基金`, and `场外基金` are normalized automatically.
+
+A holdings import records one opening `buy` transaction, or one `subscribe` transaction for an OTC fund, using the imported quantity and average cost. It does not reconstruct the account's complete historical trade ledger. Rows are matched against the active market-data provider, and ambiguous or unmatched rows are returned as per-row errors without discarding successful rows.
 
 ## How Memory Works
 
-1. **Greeting** — on page load, Thumper generates an opening message. First visit: introduces itself and asks your name. Return visits: greets you like a friend.
-2. **Retrieval** — on each message, Thumper embeds the query and fetches the top 5 semantically relevant memories, injecting them into the system prompt.
-3. **Extraction** — after each response, GPT-4o-mini extracts new facts and classifies them as `core` or `episodic`.
-4. **Conflict resolution** — if a new memory is on the same topic as an existing one, the old one is replaced automatically.
-5. **Forgetting** — episodic memories decay over time using `strength = importance × e^(−0.1 × days_since_last_access)`. Stale memories are pruned on startup.
-6. **Persistence** — all memories are saved to `src/chroma_db/` and survive server restarts.
+1. **Greeting** — on first use, Thumper introduces itself; on later visits, it can use known core facts for a familiar greeting.
+2. **Retrieval** — each user message is embedded and matched against up to five semantically relevant memories.
+3. **Prompt augmentation** — retrieved memories are added to the chat system prompt.
+4. **Extraction** — after a visible reply, `gpt-4o-mini` extracts useful facts and classifies them as `core` or `episodic`.
+5. **Duplicate and conflict handling** — near-identical memories are skipped; sufficiently similar memories are treated as the same topic and the older entry is replaced.
+6. **Forgetting** — episodic memory strength follows `importance × e^(−0.1 × days_since_last_access)`. Entries below the pruning threshold are removed on startup.
+7. **Persistence** — memories are stored in `src/chroma_db/` and survive server restarts until forgotten or manually deleted.
 
-## Memory Categories
+| Category | Typical content | Behaviour |
+| --- | --- | --- |
+| `core` | Name, goals, preferences, relationships, enduring facts | Does not decay |
+| `episodic` | Recent events, temporary plans, passing remarks | Decays over time; half-life is roughly seven days |
 
-| Category | Examples | Behaviour |
-|----------|----------|-----------|
-| `core` | Name, goals, preferences, personality | Never forgotten |
-| `episodic` | Daily events, passing remarks | Decays over ~7 days |
+## Local Data and Scope
 
-## Next Step — Memory Consolidation
+- Chroma memories are stored under `src/chroma_db/`.
+- Investment assets, quotes, history, transactions, and predictions are stored in `src/data/investment.db` by default.
+- Both locations are ignored by Git.
+- The current application is a single-user local prototype with the fixed investment owner `local`; it does not provide authentication or multi-user isolation.
+- Memory chat history is process-global and non-persistent, so this version should not be exposed as a multi-user production service.
 
-The next planned feature is automatic promotion from short-term memory to long-term memory. It is **planned, not implemented yet**.
+## Project Structure
 
-Initial design:
-
-1. Periodically scan `episodic` memories as promotion candidates.
-2. Use evidence such as repeated mentions, `access_count`, age, and importance. Initial thresholds will start around three accesses or mentions and importance of at least `0.7`, then be tuned through evaluation.
-3. Ask the LLM to verify that a candidate represents a stable fact, preference, habit, relationship, or ongoing goal rather than a one-off event.
-4. Run duplicate and conflict checks against existing `core` memories.
-5. Promote approved memories by changing their category to `core` and recording `promoted_at` and `promotion_reason` metadata.
-6. Add tests covering successful promotion, rejected temporary events, duplicates, conflicts, and threshold boundaries.
-
-Planned API: `consolidate_memories()` in `src/memory.py`, run on startup initially and later moved to a scheduled background task if needed.
-
-## Planned Architecture
-
+```text
+├── diary/                     # Contributor work diary
+├── tests/
+│   ├── test_app.py            # Chat, memory API, and UI route tests
+│   ├── test_market.py         # Market database, provider, analytics, and route tests
+│   ├── test_memory.py         # Relative-date and episodic-memory tests
+│   └── test_portfolio_import.py
+└── src/
+    ├── app.py                 # Flask app, chat routes, memory routes, server startup
+    ├── main.py                # Minimal command-line chat client
+    ├── memory.py              # Memory extraction, Chroma storage, retrieval, and decay
+    ├── extractor.py           # Legacy CLI memory extractor
+    ├── market_routes.py       # Investment pages and JSON/SSE endpoints
+    ├── market_service.py      # Portfolio, import, refresh, and analytics orchestration
+    ├── market_db.py           # SQLite schema and portfolio calculations
+    ├── market_data.py         # Yahoo, Eastmoney, hybrid, and demo providers
+    ├── market_tracker.py      # Background refresh worker
+    ├── portfolio_import.py    # Local and OpenAI-assisted file parsing
+    ├── prediction.py          # Probabilities, risk, backtests, and simulation
+    ├── requirements.txt
+    ├── chroma_db/             # Auto-created local memory database (Git-ignored)
+    ├── data/                  # Auto-created investment database/logs (Git-ignored)
+    ├── static/                # Avatar and chat/investment frontend assets
+    └── templates/             # Chat, memories, market, and asset-detail pages
 ```
+
+## Tests
+
+From the repository root:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The suite covers chat routes, memory behaviour, portfolio persistence, market providers, analytics, and file imports. Focused provider tests use mocks, and portfolio persistence checks use temporary databases.
+
+## Planned Work
+
+Memory consolidation is planned but not implemented yet. The intended next step is to promote stable, repeatedly accessed `episodic` memories to `core` after threshold, duplicate, conflict, and LLM stability checks.
+
+The longer-term architecture direction is:
+
+```text
 Conversation
-↓
-Information Extraction (Facts, Preferences, Events, Entities)
-↓
-Embedding + Structured Parsing
-↓
-Vector Database + Relational Database / Knowledge Graph
-↓
-Memory Scoring & Forgetting
-↓
-Memory Retrieval
-↓
-Prompt Augmentation
-↓
-LLM Response
+  → information extraction
+  → embeddings and structured parsing
+  → vector and relational storage
+  → memory scoring and forgetting
+  → relevant-memory retrieval
+  → prompt augmentation
+  → response generation
 ```
 
 ## Diary Setup (Obsidian)
 
-1. Clone the repo and open the `diary/` folder as an Obsidian vault
-2. Each contributor writes to their own diary file; use `shared.md` for joint entries
-3. Sync manually via terminal:
-   ```bash
-   git pull
-   git add diary/
-   git commit -m "diary: update"
-   git push
-   ```
+Open `diary/` as an Obsidian vault. Each contributor can keep notes in their own file and use `diary/shared.md` for shared entries.

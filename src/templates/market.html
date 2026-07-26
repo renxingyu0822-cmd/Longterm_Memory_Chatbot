@@ -46,7 +46,7 @@
 
     <section class="summary-grid" aria-label="组合概览">
       <article class="summary-card"><span class="summary-label">持仓资产</span><strong class="summary-value" id="position-count">0</strong><div class="summary-sub">由交易流水计算</div></article>
-      <article class="summary-card"><span class="summary-label">自选观察</span><strong class="summary-value" id="watchlist-count">0</strong><div class="summary-sub">可不持有</div></article>
+      <article class="summary-card"><span class="summary-label">自选观察</span><strong class="summary-value" id="watchlist-count">0</strong><div class="summary-sub">包含全部持仓</div></article>
       <article class="summary-card"><span class="summary-label">当前分类盈亏</span><strong class="summary-value" id="profit-total">—</strong><div class="summary-sub" id="profit-currency">按币种分别汇总</div></article>
       <article class="summary-card"><span class="summary-label">追踪资产</span><strong class="summary-value" id="tracked-count">0</strong><div class="summary-sub">持仓与自选去重</div></article>
     </section>
@@ -67,6 +67,15 @@
 
       <aside class="panel">
         <header class="panel-head"><div><h2 class="panel-title">添加资产</h2><p class="panel-copy">在当前股票或基金分类内搜索</p></div></header>
+        <section class="import-panel" aria-labelledby="import-title">
+          <div class="import-heading"><div><h3 id="import-title">图片 / 文件一键导入</h3><p>截图、PDF、表格均可；持仓需包含数量和成本价</p></div><span class="import-badge">NEW</span></div>
+          <div class="import-actions">
+            <button class="primary-button import-button" type="button" data-import-target="holdings">导入持有</button>
+            <button class="ghost-button import-button" type="button" data-import-target="watchlist">导入自选</button>
+          </div>
+          <input id="portfolio-import-file" type="file" hidden accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.csv,.tsv,.txt,.json,.xls,.xlsx" />
+          <div class="import-status" id="portfolio-import-status" role="status" aria-live="polite"></div>
+        </section>
         <div class="search-panel">
           <div class="search-line">
             <input class="field" id="asset-search" type="search" placeholder="名称或代码" autocomplete="off" />
@@ -74,7 +83,7 @@
           </div>
           <div class="search-results" id="search-results"></div>
         </div>
-        <p class="notice">股票和场内基金可使用实时行情；场外基金只显示最新正式净值。标记为“演示”的数据用于离线体验，不能用于真实投资判断。</p>
+        <p class="notice">导入的持仓会自动加入自选。股票和场内基金可使用实时行情；场外基金只显示最新正式净值。标记为“演示”的数据用于离线体验，不能用于真实投资判断。</p>
       </aside>
     </div>
   </main>
@@ -88,8 +97,8 @@
           <label class="form-field full">资产<input class="field" id="transaction-asset-name" type="text" disabled /></label>
           <label class="form-field">类型<select class="field" id="transaction-type"><option value="buy">买入</option><option value="sell">卖出</option><option value="subscribe">申购</option><option value="redeem">赎回</option><option value="dividend">现金分红</option><option value="fee">其他费用</option></select></label>
           <label class="form-field">成交时间<input class="field" id="transaction-time" type="datetime-local" required /></label>
-          <label class="form-field" data-trade-field>数量/份额<input class="field" id="transaction-quantity" type="number" step="any" min="0" /></label>
-          <label class="form-field" data-trade-field>成交单价<input class="field" id="transaction-price" type="number" step="any" min="0" /></label>
+          <label class="form-field" data-trade-field><span id="transaction-quantity-label">数量</span><input class="field" id="transaction-quantity" type="number" step="any" min="0" /></label>
+          <label class="form-field" data-trade-field><span id="transaction-price-label">成交单价</span><input class="field" id="transaction-price" type="number" step="any" min="0" /></label>
           <label class="form-field" data-cash-field hidden>现金金额<input class="field" id="transaction-cash" type="number" step="any" min="0" /></label>
           <label class="form-field">手续费<input class="field" id="transaction-fees" type="number" step="any" min="0" value="0" /></label>
           <label class="form-field">税费<input class="field" id="transaction-taxes" type="number" step="any" min="0" value="0" /></label>

@@ -108,6 +108,7 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(44px,
 .asset-name { color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 780; }
 .asset-symbol { margin-top: 4px; color: var(--muted); font-size: 10px; }
 .asset-price { font-size: 15px; font-weight: 760; }
+.asset-price-label { margin-bottom: 3px; color: var(--muted); font-size: 9px; font-weight: 700; }
 .asset-change, .profit { margin-top: 4px; font-size: 11px; font-weight: 700; }
 .positive { color: var(--red); }
 .negative { color: var(--green); }
@@ -119,6 +120,18 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(44px,
 .empty-icon { display: block; margin-bottom: 12px; font-size: 28px; }
 
 .search-panel { padding: 18px; }
+.import-panel { margin: 18px 18px 0; padding: 16px; border: 1px solid rgba(53,106,125,.18); border-radius: 18px; background: linear-gradient(145deg, rgba(223,237,242,.72), rgba(255,255,255,.64)); }
+.import-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.import-heading h3 { margin: 0; font-size: 13px; }
+.import-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.import-badge { padding: 4px 7px; border-radius: 999px; color: var(--blue); background: rgba(255,255,255,.72); font-size: 8px; font-weight: 850; letter-spacing: .08em; }
+.import-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 13px; }
+.import-button { width: 100%; padding: 9px 10px; }
+.import-status { color: var(--muted); font-size: 10px; line-height: 1.55; }
+.import-status:not(:empty) { margin-top: 11px; }
+.import-status.success { color: var(--green); }
+.import-status.error { color: var(--red); }
+.import-error-list { margin: 5px 0 0; padding-left: 16px; color: var(--red); }
 .search-line { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .field { width: 100%; border: 1px solid var(--line); border-radius: 13px; padding: 11px 12px; color: var(--ink); outline: none; background: rgba(255,255,255,.78); }
 .field:focus { border-color: rgba(53,106,125,.55); box-shadow: 0 0 0 4px rgba(53,106,125,.09); }

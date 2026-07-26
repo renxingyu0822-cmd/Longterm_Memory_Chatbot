@@ -8,9 +8,11 @@ the network or a symbol is unavailable.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import random
+import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -23,6 +25,9 @@ import requests
 
 class MarketDataError(RuntimeError):
     pass
+
+
+SHANGHAI_TZ = timezone(timedelta(hours=8))
 
 
 CATALOG: list[dict[str, Any]] = [
@@ -71,15 +76,20 @@ class DemoMarketDataProvider:
 
     def quote(self, asset: dict[str, Any]) -> dict[str, Any]:
         seed = self._seed(asset["provider_symbol"])
-        catalog = _catalog_item(asset["provider_symbol"]) or {}
+        catalog_item = _catalog_item(asset["provider_symbol"])
+        if asset.get("subclass") == "otc" and not catalog_item:
+            raise MarketDataError(
+                "No demo NAV is available for this OTC fund; keeping the last official NAV"
+            )
+        catalog = catalog_item or {}
         base = float(catalog.get("base_price") or 100.0)
         if asset.get("subclass") == "otc":
             phase = datetime.now().toordinal() / 17 + seed
             price = base * (1 + 0.035 * math.sin(phase))
-            quote_time = datetime.now(ZoneInfo("Asia/Shanghai")).replace(
+            quote_time = datetime.now(SHANGHAI_TZ).replace(
                 hour=20, minute=0, second=0, microsecond=0
             )
-            if quote_time > datetime.now(ZoneInfo("Asia/Shanghai")):
+            if quote_time > datetime.now(SHANGHAI_TZ):
                 quote_time -= timedelta(days=1)
             is_delayed = True
         else:
@@ -100,7 +110,12 @@ class DemoMarketDataProvider:
     def history(self, asset: dict[str, Any], days: int = 520) -> list[dict[str, Any]]:
         seed = self._seed(asset["provider_symbol"])
         randomizer = random.Random(seed)
-        catalog = _catalog_item(asset["provider_symbol"]) or {}
+        catalog_item = _catalog_item(asset["provider_symbol"])
+        if asset.get("subclass") == "otc" and not catalog_item:
+            raise MarketDataError(
+                "No demo NAV history is available for this OTC fund; keeping official history"
+            )
+        catalog = catalog_item or {}
         base = float(catalog.get("base_price") or 100.0)
         volatility = 0.008 if asset.get("subclass") == "otc" else 0.016
         price = base * 0.76
@@ -277,6 +292,155 @@ class YahooFinanceProvider:
         return bars[-days:]
 
 
+class EastmoneyFundProvider:
+    """Search Chinese OTC funds and load their published NAV history."""
+
+    name = "eastmoney"
+    search_url = "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
+    trend_url = "https://fund.eastmoney.com/pingzhongdata/{code}.js"
+
+    def __init__(self, timeout: float = 7.0):
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 ThumperLocalInvestmentWorkspace/1.0",
+                "Accept": "application/json",
+                "Referer": "https://fund.eastmoney.com/",
+            }
+        )
+
+    def _get_json(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = self.session.get(url, params=params, timeout=self.timeout)
+                response.raise_for_status()
+                return response.json()
+            except (requests.RequestException, ValueError) as error:
+                last_error = error
+                if attempt == 0:
+                    time.sleep(0.25)
+        raise MarketDataError(f"Eastmoney fund data unavailable: {last_error}") from last_error
+
+    def _get_text(self, url: str) -> str:
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = self.session.get(url, timeout=self.timeout)
+                response.raise_for_status()
+                return response.text
+            except requests.RequestException as error:
+                last_error = error
+                if attempt == 0:
+                    time.sleep(0.25)
+        raise MarketDataError(f"Eastmoney fund history unavailable: {last_error}") from last_error
+
+    @staticmethod
+    def _profile(item: dict[str, Any]) -> dict[str, Any] | None:
+        code = str(item.get("CODE") or item.get("_id") or "").strip()
+        category = str(item.get("CATEGORYDESC") or "")
+        if not (len(code) == 6 and code.isdigit()) or "基金" not in category:
+            return None
+        base_info = item.get("FundBaseInfo") or {}
+        return {
+            "symbol": code,
+            "provider_symbol": f"{code}.OF",
+            "name": base_info.get("SHORTNAME") or item.get("NAME") or code,
+            "asset_class": "fund",
+            "subclass": "otc",
+            "market": "CN",
+            "exchange": "OTC",
+            "currency": "CNY",
+            "timezone": "Asia/Shanghai",
+            "source": "eastmoney",
+        }
+
+    def _search_items(self, query: str) -> list[dict[str, Any]]:
+        payload = self._get_json(self.search_url, {"m": 1, "key": query.strip()})
+        if payload.get("ErrCode") not in {None, 0}:
+            raise MarketDataError(str(payload.get("ErrMsg") or "Fund search failed"))
+        return payload.get("Datas") or []
+
+    def search(
+        self,
+        query: str,
+        asset_class: str | None = None,
+        subclass: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not query.strip() or asset_class not in {None, "fund"} or subclass not in {None, "otc"}:
+            return []
+        results = []
+        for item in self._search_items(query):
+            profile = self._profile(item)
+            if profile:
+                results.append(profile)
+        return results[:20]
+
+    @staticmethod
+    def _fund_code(asset: dict[str, Any]) -> str:
+        return str(asset.get("provider_symbol") or asset.get("symbol") or "").split(".")[0]
+
+    def quote(self, asset: dict[str, Any]) -> dict[str, Any]:
+        code = self._fund_code(asset)
+        exact = next(
+            (
+                item
+                for item in self._search_items(code)
+                if str(item.get("CODE") or item.get("_id") or "") == code
+            ),
+            None,
+        )
+        base_info = (exact or {}).get("FundBaseInfo") or {}
+        nav = base_info.get("DWJZ")
+        nav_date = str(base_info.get("FSRQ") or "")
+        if nav is None or not nav_date:
+            raise MarketDataError("The fund has no published NAV yet")
+        quote_time = datetime.fromisoformat(nav_date).replace(
+            hour=20,
+            tzinfo=SHANGHAI_TZ,
+        )
+        return {
+            "price": float(nav),
+            "previous_close": None,
+            "currency": "CNY",
+            "quote_time": quote_time.isoformat(timespec="seconds"),
+            "source": "eastmoney",
+            "is_delayed": True,
+        }
+
+    def history(self, asset: dict[str, Any], days: int = 520) -> list[dict[str, Any]]:
+        code = self._fund_code(asset)
+        text = self._get_text(self.trend_url.format(code=code))
+        match = re.search(r"var Data_netWorthTrend\s*=\s*(\[.*?\]);", text, re.DOTALL)
+        if not match:
+            raise MarketDataError("Fund history has an unsupported response format")
+        try:
+            rows = json.loads(match.group(1))
+        except ValueError as error:
+            raise MarketDataError(f"Fund history could not be decoded: {error}") from error
+        bars = []
+        for row in rows:
+            nav = row.get("y")
+            timestamp = row.get("x")
+            if nav in {None, ""} or timestamp is None:
+                continue
+            price = float(nav)
+            bars.append(
+                {
+                    "date": datetime.fromtimestamp(float(timestamp) / 1000, SHANGHAI_TZ).date().isoformat(),
+                    "open": price,
+                    "high": price,
+                    "low": price,
+                    "close": price,
+                    "volume": None,
+                    "source": "eastmoney",
+                }
+            )
+        bars.sort(key=lambda item: item["date"])
+        return bars[-days:]
+
+
 class HybridMarketDataProvider:
     """Use live Yahoo data when available and a labelled demo fallback otherwise."""
 
@@ -284,6 +448,7 @@ class HybridMarketDataProvider:
 
     def __init__(self):
         self.yahoo = YahooFinanceProvider()
+        self.eastmoney = EastmoneyFundProvider()
         self.demo = DemoMarketDataProvider()
         self._cache: dict[tuple[str, str], tuple[float, Any]] = {}
         self._lock = threading.Lock()
@@ -303,21 +468,44 @@ class HybridMarketDataProvider:
         local = self.demo.search(query, asset_class, subclass)
         if os.getenv("MARKET_DATA_PROVIDER", "hybrid").lower() == "demo":
             return local
-        try:
-            remote = self._cached(
-                ("search", f"{query}:{asset_class}:{subclass}"),
-                300,
-                lambda: self.yahoo.search(query, asset_class, subclass),
-            )
-        except MarketDataError:
-            remote = []
-        merged: dict[str, dict[str, Any]] = {item["provider_symbol"]: item for item in remote}
+        fund_results = []
+        if asset_class in {None, "fund"} and subclass in {None, "otc"}:
+            try:
+                fund_results = self._cached(
+                    ("fund-search", f"{query}:{asset_class}:{subclass}"),
+                    300,
+                    lambda: self.eastmoney.search(query, asset_class, subclass),
+                )
+            except MarketDataError:
+                fund_results = []
+        yahoo_results = []
+        if subclass != "otc":
+            try:
+                yahoo_results = self._cached(
+                    ("search", f"{query}:{asset_class}:{subclass}"),
+                    300,
+                    lambda: self.yahoo.search(query, asset_class, subclass),
+                )
+            except MarketDataError:
+                yahoo_results = []
+        merged: dict[str, dict[str, Any]] = {
+            item["provider_symbol"]: item for item in [*fund_results, *yahoo_results]
+        }
         for item in local:
             merged.setdefault(item["provider_symbol"], item)
         return list(merged.values())[:20]
 
     def quote(self, asset: dict[str, Any]) -> dict[str, Any]:
-        use_demo = os.getenv("MARKET_DATA_PROVIDER", "hybrid").lower() == "demo" or str(asset["provider_symbol"]).endswith(".OF")
+        use_demo = os.getenv("MARKET_DATA_PROVIDER", "hybrid").lower() == "demo"
+        if not use_demo and asset.get("subclass") == "otc":
+            try:
+                return self._cached(
+                    ("fund-quote", asset["provider_symbol"]),
+                    int(os.getenv("MARKET_QUOTE_CACHE_SECONDS", "30")),
+                    lambda: self.eastmoney.quote(asset),
+                )
+            except MarketDataError:
+                return self.demo.quote(asset)
         if not use_demo:
             try:
                 return self._cached(
@@ -330,7 +518,16 @@ class HybridMarketDataProvider:
         return self.demo.quote(asset)
 
     def history(self, asset: dict[str, Any], days: int = 520) -> list[dict[str, Any]]:
-        use_demo = os.getenv("MARKET_DATA_PROVIDER", "hybrid").lower() == "demo" or str(asset["provider_symbol"]).endswith(".OF")
+        use_demo = os.getenv("MARKET_DATA_PROVIDER", "hybrid").lower() == "demo"
+        if not use_demo and asset.get("subclass") == "otc":
+            try:
+                return self._cached(
+                    ("fund-history", asset["provider_symbol"]),
+                    3600,
+                    lambda: self.eastmoney.history(asset, days),
+                )
+            except MarketDataError:
+                return self.demo.history(asset, days)
         if not use_demo:
             try:
                 return self._cached(

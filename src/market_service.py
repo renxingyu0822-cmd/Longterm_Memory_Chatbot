@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import time
+from datetime import datetime
 from typing import Any
 
-from market_data import provider
+from market_data import MarketDataError, provider
 from market_db import DEFAULT_OWNER, MarketDatabase
 from prediction import MODEL_VERSION, backtest, predict_trends, risk_metrics, simulate_probability_strategy
 
@@ -70,6 +72,159 @@ class MarketService:
             self.refresh_asset(asset_id)
         return transaction
 
+    @staticmethod
+    def _import_queries(symbol: str, name: str) -> list[str]:
+        queries = []
+        if symbol:
+            queries.append(symbol)
+            if symbol.isdigit():
+                queries.extend([symbol.zfill(6), symbol.zfill(5), symbol.zfill(4)])
+        if name:
+            queries.append(name)
+        return list(dict.fromkeys(query for query in queries if query))
+
+    @staticmethod
+    def _import_name_key(value: Any) -> str:
+        """Normalize harmless fund-name variants without merging share classes."""
+
+        text = re.sub(r"[\s_\-—（）()：:/.·]", "", str(value or "")).casefold()
+        return text.replace("发起式", "").replace("发起", "")
+
+    def _resolve_import_asset(self, row: dict[str, Any]) -> dict[str, Any]:
+        symbol = str(row.get("symbol") or "").strip().upper()
+        name = str(row.get("name") or "").strip()
+        asset_class = str(row.get("asset_class") or "").strip() or None
+        subclass = str(row.get("subclass") or "").strip() or None
+        candidates: dict[str, dict[str, Any]] = {}
+        for constrained in (True, False):
+            for query in self._import_queries(symbol, name):
+                results = self.search(
+                    query,
+                    asset_class if constrained else None,
+                    subclass if constrained else None,
+                )
+                for item in results:
+                    candidates[str(item.get("provider_symbol") or item.get("symbol"))] = item
+            if candidates:
+                break
+        if not candidates:
+            raise ValueError(f"未找到资产：{symbol or name}")
+
+        desired_symbols = {symbol}
+        if symbol.isdigit():
+            desired_symbols.update({symbol.zfill(6), symbol.zfill(5), symbol.zfill(4)})
+        exact_symbol = [
+            item for item in candidates.values()
+            if str(item.get("symbol") or "").upper() in desired_symbols
+            or str(item.get("provider_symbol") or "").upper().split(".")[0] in desired_symbols
+        ]
+        if len(exact_symbol) == 1:
+            return exact_symbol[0]
+        exact_name = [item for item in candidates.values() if name and str(item.get("name") or "").casefold() == name.casefold()]
+        if len(exact_name) == 1:
+            return exact_name[0]
+        name_key = self._import_name_key(name)
+        normalized_name = [
+            item for item in candidates.values()
+            if name_key and self._import_name_key(item.get("name")) == name_key
+        ]
+        if len(normalized_name) == 1:
+            return normalized_name[0]
+        if len(candidates) == 1:
+            return next(iter(candidates.values()))
+        raise ValueError(f"匹配到多个资产，请在文件中补充准确代码：{symbol or name}")
+
+    @staticmethod
+    def _import_occurred_at(value: Any) -> str | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        normalized = text.replace("/", "-")
+        try:
+            datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise ValueError(f"无法识别日期：{text}") from error
+        return normalized
+
+    def import_portfolio_rows(
+        self,
+        rows: list[dict[str, Any]],
+        target: str,
+        owner_id: str = DEFAULT_OWNER,
+    ) -> dict[str, Any]:
+        if target not in {"holdings", "watchlist"}:
+            raise ValueError("导入目标必须是持有或自选")
+        imported = []
+        errors = []
+        seen_watchlist_ids: set[int] = set()
+        for index, row in enumerate(rows, start=1):
+            label = str(row.get("symbol") or row.get("name") or f"第 {index} 行")
+            try:
+                matched = self._resolve_import_asset(row)
+                asset = self.db.ensure_asset(matched)
+                asset_id = int(asset["id"])
+                if target == "watchlist":
+                    if asset_id in seen_watchlist_ids:
+                        continue
+                    self.db.add_watchlist(asset_id, owner_id)
+                    seen_watchlist_ids.add(asset_id)
+                else:
+                    quantity = float(row.get("quantity") or 0)
+                    cost_price = float(row.get("cost_price") or 0)
+                    if quantity <= 0 or cost_price <= 0:
+                        raise ValueError("持仓需要大于 0 的数量/份额和平均成本价")
+                    occurred_at = self._import_occurred_at(row.get("occurred_at"))
+                    transaction_payload = {
+                        "asset_id": asset_id,
+                        "transaction_type": "subscribe" if asset.get("subclass") == "otc" else "buy",
+                        "quantity": quantity,
+                        "price": cost_price,
+                        "currency": row.get("currency") or asset.get("currency"),
+                        "note": "从图片/文件一键导入",
+                    }
+                    if occurred_at:
+                        transaction_payload["occurred_at"] = occurred_at
+                    self.db.add_transaction(transaction_payload, owner_id)
+                imported.append({
+                    "id": asset_id,
+                    "symbol": asset["symbol"],
+                    "name": asset["name"],
+                    "target": target,
+                })
+            except (TypeError, ValueError) as error:
+                errors.append({"row": index, "label": label, "error": str(error)})
+            except Exception:
+                errors.append({"row": index, "label": label, "error": "行情匹配暂时不可用"})
+        return {
+            "target": target,
+            "total": len(rows),
+            "imported_count": len(imported),
+            "failed_count": len(errors),
+            "imported": imported,
+            "errors": errors,
+        }
+
+    def _official_nav_from_history(self, asset: dict[str, Any]) -> dict[str, Any] | None:
+        if asset.get("subclass") != "otc":
+            return None
+        bars = [
+            bar
+            for bar in self.db.get_daily_bars(int(asset["id"]), limit=10)
+            if bar.get("source") != "demo"
+        ]
+        if not bars:
+            return None
+        latest = bars[-1]
+        previous_close = bars[-2]["close"] if len(bars) > 1 else None
+        return {
+            "price": latest["close"],
+            "previous_close": previous_close,
+            "currency": asset.get("currency") or "CNY",
+            "quote_time": f"{latest['bar_date']}T20:00:00+08:00",
+            "source": latest.get("source") or "official-history",
+            "is_delayed": True,
+        }
+
     def refresh_asset(self, asset_id: int, force: bool = False) -> dict[str, Any]:
         asset = self.db.get_asset(asset_id)
         if not asset:
@@ -80,12 +235,21 @@ class MarketService:
             if cached and not force and time.time() - cached[0] < 25:
                 return cached[1]
 
-            quote = self.provider.quote(asset)
+            try:
+                quote = self.provider.quote(asset)
+            except MarketDataError:
+                quote = self._official_nav_from_history(asset)
+                if not quote:
+                    raise
             self.db.upsert_quote(asset_id, quote)
             existing_bars = self.db.get_daily_bars(asset_id, limit=30)
             if force or len(existing_bars) < 25:
-                bars = self.provider.history(asset, days=520)
-                self.db.upsert_daily_bars(asset_id, bars)
+                try:
+                    bars = self.provider.history(asset, days=520)
+                    self.db.upsert_daily_bars(asset_id, bars)
+                except MarketDataError:
+                    if asset.get("subclass") != "otc" or not existing_bars:
+                        raise
             bars = self.db.get_daily_bars(asset_id, limit=520)
             prices = [float(bar["close"]) for bar in bars]
             predictions = predict_trends(prices, float(quote["price"]))
@@ -152,6 +316,12 @@ class MarketService:
     def dashboard(self, owner_id: str = DEFAULT_OWNER, refresh_missing: bool = True) -> dict[str, Any]:
         watchlist = self.db.list_watchlist(owner_id)
         positions = self.db.calculate_positions(owner_id)
+        watchlist_ids = {int(item["id"]) for item in watchlist}
+        missing_watchlist = [item for item in positions if int(item["id"]) not in watchlist_ids]
+        for item in missing_watchlist:
+            self.db.add_watchlist(int(item["id"]), owner_id)
+        if missing_watchlist:
+            watchlist = self.db.list_watchlist(owner_id)
         if refresh_missing:
             missing_ids = {
                 int(item["id"])
@@ -183,4 +353,3 @@ class MarketService:
 
 
 service = MarketService()
-
