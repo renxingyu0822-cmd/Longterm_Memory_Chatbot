@@ -410,3 +410,37 @@ LLM Response
 **Verification:**
 
 - Ran `python -m unittest tests.test_market -v` with the project virtual environment; all 8 market tests passed.
+
+### Portfolio Import, Fund Data, and Session Recovery
+
+**Portfolio import:**
+
+- Added one-click **Import Holdings** and **Import Watchlist** actions to the investment workspace, backed by `POST /api/portfolio/import`.
+- Added local parsing for CSV, TSV, TXT, JSON, and XLSX files, plus OpenAI-assisted structured extraction for screenshots, PDF/Word documents, and legacy XLS files.
+- Added English and Chinese column-name normalization, a 15 MB upload limit, a 500-row limit, numeric/date validation, and per-row error reporting.
+- Imported rows are resolved against the active market-data provider by exact symbol or normalized name. Ambiguous or unmatched assets are rejected without rolling back successful rows.
+- Holdings imports create one opening `buy` transaction, or `subscribe` for an OTC fund, from the supplied quantity or shares and average cost. Watchlist imports require only a symbol or name.
+
+**Portfolio and fund behaviour:**
+
+- New buys and subscriptions now add the asset to the watchlist automatically. The dashboard's watchlist count includes all watched assets, while the watchlist-only view still excludes current holdings.
+- Added an Eastmoney provider for Chinese OTC-fund search, published NAV quotes, and NAV history. Unknown OTC funds no longer receive stock-like synthetic prices, and a failed refresh can retain the latest stored official NAV.
+- Updated fund presentation to distinguish shares, NAV, subscription, and redemption from stock quantity, trade price, buy, and sell terminology.
+- Prediction records are now updated for the same asset, quote time, horizon, and model version, and the displayed prediction set is aligned with the current stored quote where possible.
+
+**Interface and documentation:**
+
+- The investment page now preserves the selected stock/fund area, market subclass, and portfolio/watchlist-only view in `sessionStorage`.
+- Unfinished transaction forms are restored after navigation or reload and cleared after cancellation or successful submission.
+- Import feedback detects non-JSON server responses and gives a specific restart hint when an older local server returns `404` for the new endpoint.
+- Reorganized the README into a current feature overview, setup and configuration guide, portfolio-import reference, memory-system explanation, project structure, test instructions, data-scope notes, and risk limitations.
+
+**Automated coverage added:**
+
+- Added parser tests for Chinese CSV headers, JSON watchlists, dependency-free XLSX reading, model-extractor injection, zero-position filtering, structured high-detail image extraction, and actionable connection errors.
+- Expanded market tests for automatic watchlisting, quote-aligned predictions, Eastmoney fund data, failed-refresh NAV preservation, import matching, and holdings/watchlist route flows.
+
+**Verification:**
+
+- Ran `python -m unittest tests.test_market tests.test_portfolio_import -v`; all 24 focused market and portfolio-import tests passed.
+- Full `unittest` discovery ran 42 tests and reported 7 failures plus 1 error outside the focused investment suite. The failures expose chat/memory test-isolation issues—unintended live OpenAI calls—and an outdated XSS assertion that rejects the memory page's own legitimate `<script>` elements.

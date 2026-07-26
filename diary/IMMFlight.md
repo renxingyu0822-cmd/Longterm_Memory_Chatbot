@@ -130,3 +130,38 @@
 - Retry the commit with the prepared English title.
 - Replace the prototype feed with a licensed provider before public deployment.
 - Exercise the workspace with real portfolio data and expand accounting and market-provider edge-case coverage.
+
+---
+
+## 2026-07-26 — Portfolio Import and Investment UX Follow-up
+
+**What I worked on:**
+
+- Requested one-click portfolio import from screenshots and common document, text, and spreadsheet formats.
+- Chose separate import actions for current holdings and watchlist-only assets, and required every imported or newly purchased holding to appear in the watchlist automatically.
+- Asked for imported holdings to use quantity or fund shares plus average cost, while watchlist imports should work with only an asset code or name.
+- Requested more accurate OTC-fund behaviour: official delayed NAV data, fund-specific labels and transaction types, and no invented stock-like demo price for an unknown fund.
+- Asked for the investment workspace to remember the selected asset class, market tab, list view, and an unfinished transaction form when navigating away or reloading the page.
+- Requested clearer feedback when the running local server is stale and does not yet expose the new import endpoint.
+- Asked for the README to be reorganized into a complete guide covering setup, configuration, imports, architecture, tests, data scope, and investment limitations.
+- Asked for my actions to be recorded in `IMMFlight.md` and the corresponding project changes to be recorded in `shared.md`.
+
+**Decisions made:**
+
+- Treat a holdings import as an opening buy or subscription at the supplied average cost, not as a reconstruction of the account's full historical trade ledger.
+- Allow partial import success so one unmatched or malformed row does not discard valid rows from the same file.
+- Match imported assets against the active data provider and reject ambiguous matches instead of guessing.
+- Keep navigation state and unfinished transaction drafts session-scoped in the browser.
+- Prefer published OTC-fund NAVs and retain the latest official value if a refresh fails.
+
+**Blockers / questions:**
+
+- Screenshot and rich-document imports require a configured OpenAI API key and network access; locally structured formats can be parsed without the model.
+- Yahoo Finance and Eastmoney remain prototype public sources whose availability and redistribution terms are not suitable for an unsupported public deployment.
+- The 24 focused market/import tests pass. Full discovery currently has 7 failures and 1 error among 42 tests in the separate chat/memory suite, caused by unintended live OpenAI calls and an outdated XSS assertion that rejects the page's own legitimate script tags.
+
+**Next steps:**
+
+- Exercise imports using representative broker screenshots and exports, especially ambiguous names, duplicate rows, multiple share classes, and partially invalid files.
+- Verify session recovery and transaction drafts across refreshes and navigation on both desktop and mobile browsers.
+- Replace prototype market sources with licensed providers before any public release.
