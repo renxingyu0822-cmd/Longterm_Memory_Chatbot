@@ -273,6 +273,11 @@ class MarketService:
             if cached and not force and time.time() - cached[0] < 25:
                 return cached[1]
 
+            if force:
+                invalidate = getattr(self.provider, "invalidate", None)
+                if callable(invalidate):
+                    invalidate(asset)
+
             try:
                 quote = self.provider.quote(asset)
             except MarketDataError:
@@ -281,7 +286,17 @@ class MarketService:
                     raise
             self.db.upsert_quote(asset_id, quote)
             existing_bars = self.db.get_daily_bars(asset_id, limit=30)
-            if force or len(existing_bars) < 25:
+            latest_bar_date = max(
+                (str(bar.get("bar_date") or "") for bar in existing_bars),
+                default="",
+            )
+            quote_date = str(quote.get("quote_time") or "")[:10]
+            needs_latest_otc_nav = (
+                asset.get("subclass") == "otc"
+                and bool(quote_date)
+                and latest_bar_date < quote_date
+            )
+            if force or len(existing_bars) < 25 or needs_latest_otc_nav:
                 try:
                     bars = self.provider.history(asset, days=520)
                     self.db.upsert_daily_bars(asset_id, bars)

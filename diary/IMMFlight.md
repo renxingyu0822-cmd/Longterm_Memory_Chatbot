@@ -241,3 +241,26 @@
 - Existing data produced four active records: holdings primarily in OTC funds, tracked assets primarily in OTC funds, broad watchlist use before holding, and repeated technology-theme interest.
 - The focused 27-test verification set passed, including all 23 market tests and new chat/memory integration tests. Full chat tests remained at the known baseline of 7 failures and 1 error.
 - Restarted the local service and verified one listener at `http://127.0.0.1:8080`, a dashboard count of four investment habits, and successful rendering on the memory page.
+
+---
+
+## 2026-07-27 — Daily Official Fund NAV Refresh Fix
+
+**What I worked on:**
+
+- Investigated why official OTC-fund NAVs, daily changes, and portfolio returns still had not advanced after 23:00.
+- Required the application to continue refreshing official fund data automatically every day.
+
+**Decisions made:**
+
+- Use Eastmoney's official NAV-history response for the latest quote instead of the slower fund-search metadata.
+- Keep a short cache and check every background refresh cycle while the local service is running.
+- Merge the long trend series with recent official NAV rows so the latest published date also appears in asset history.
+
+**Operational outcome:**
+
+- Confirmed the old search metadata still reported 2026-07-24 while the official endpoint already reported 2026-07-27.
+- Updated current positions to `026789` NAV `0.8472` (`+2.05%`) and `022364` NAV `5.3757` (`+4.01%`), with portfolio returns recalculated automatically.
+- Most tracked domestic funds now show 2026-07-27 in both the latest quote and history. `027898` remains at the upstream official date 2026-07-24, and the QDII fund `012920` remains at 2026-07-24 according to its delayed publication schedule.
+- Added regression coverage for stale search metadata, fresh official NAVs, cache invalidation, and automatic daily history advancement; all 24 market tests passed.
+- Restarted one network-enabled Flask listener on port `8080` and verified the background tracker continues independently of an open browser page.

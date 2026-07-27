@@ -297,6 +297,7 @@ class EastmoneyFundProvider:
 
     name = "eastmoney"
     search_url = "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx"
+    nav_history_url = "https://api.fund.eastmoney.com/f10/lsjz"
     trend_url = "https://fund.eastmoney.com/pingzhongdata/{code}.js"
 
     def __init__(self, timeout: float = 7.0):
@@ -306,7 +307,7 @@ class EastmoneyFundProvider:
             {
                 "User-Agent": "Mozilla/5.0 ThumperLocalInvestmentWorkspace/1.0",
                 "Accept": "application/json",
-                "Referer": "https://fund.eastmoney.com/",
+                "Referer": "https://fundf10.eastmoney.com/",
             }
         )
 
@@ -381,28 +382,46 @@ class EastmoneyFundProvider:
     def _fund_code(asset: dict[str, Any]) -> str:
         return str(asset.get("provider_symbol") or asset.get("symbol") or "").split(".")[0]
 
+    def _nav_rows(self, code: str, page_size: int) -> list[dict[str, Any]]:
+        payload = self._get_json(
+            self.nav_history_url,
+            {
+                "fundCode": code,
+                "pageIndex": 1,
+                "pageSize": max(2, min(int(page_size), 1000)),
+            },
+        )
+        if payload.get("ErrCode") not in {None, 0}:
+            raise MarketDataError(str(payload.get("ErrMsg") or "Fund NAV history failed"))
+        data = payload.get("Data") or {}
+        rows = data.get("LSJZList") or []
+        if not isinstance(rows, list) or not rows:
+            raise MarketDataError("The fund has no published NAV history")
+        return rows
+
     def quote(self, asset: dict[str, Any]) -> dict[str, Any]:
         code = self._fund_code(asset)
-        exact = next(
+        rows = self._nav_rows(code, 2)
+        latest = rows[0]
+        nav = latest.get("DWJZ")
+        nav_date = str(latest.get("FSRQ") or "")
+        if nav is None or not nav_date:
+            raise MarketDataError("The fund has no published NAV yet")
+        previous_close = next(
             (
-                item
-                for item in self._search_items(code)
-                if str(item.get("CODE") or item.get("_id") or "") == code
+                float(row["DWJZ"])
+                for row in rows[1:]
+                if row.get("DWJZ") not in {None, ""}
             ),
             None,
         )
-        base_info = (exact or {}).get("FundBaseInfo") or {}
-        nav = base_info.get("DWJZ")
-        nav_date = str(base_info.get("FSRQ") or "")
-        if nav is None or not nav_date:
-            raise MarketDataError("The fund has no published NAV yet")
         quote_time = datetime.fromisoformat(nav_date).replace(
             hour=20,
             tzinfo=SHANGHAI_TZ,
         )
         return {
             "price": float(nav),
-            "previous_close": None,
+            "previous_close": previous_close,
             "currency": "CNY",
             "quote_time": quote_time.isoformat(timespec="seconds"),
             "source": "eastmoney",
@@ -411,34 +430,51 @@ class EastmoneyFundProvider:
 
     def history(self, asset: dict[str, Any], days: int = 520) -> list[dict[str, Any]]:
         code = self._fund_code(asset)
-        text = self._get_text(self.trend_url.format(code=code))
-        match = re.search(r"var Data_netWorthTrend\s*=\s*(\[.*?\]);", text, re.DOTALL)
-        if not match:
-            raise MarketDataError("Fund history has an unsupported response format")
-        try:
-            rows = json.loads(match.group(1))
-        except ValueError as error:
-            raise MarketDataError(f"Fund history could not be decoded: {error}") from error
-        bars = []
+        rows = self._nav_rows(code, min(days, 20))
+        bars_by_date: dict[str, dict[str, Any]] = {}
+        if days > 20:
+            try:
+                text = self._get_text(self.trend_url.format(code=code))
+                match = re.search(r"var Data_netWorthTrend\s*=\s*(\[.*?\]);", text, re.DOTALL)
+                if match:
+                    for row in json.loads(match.group(1)):
+                        nav = row.get("y")
+                        timestamp = row.get("x")
+                        if nav in {None, ""} or timestamp is None:
+                            continue
+                        price = float(nav)
+                        bar_date = datetime.fromtimestamp(
+                            float(timestamp) / 1000,
+                            SHANGHAI_TZ,
+                        ).date().isoformat()
+                        bars_by_date[bar_date] = {
+                            "date": bar_date,
+                            "open": price,
+                            "high": price,
+                            "low": price,
+                            "close": price,
+                            "volume": None,
+                            "source": "eastmoney",
+                        }
+            except (MarketDataError, TypeError, ValueError):
+                pass
         for row in rows:
-            nav = row.get("y")
-            timestamp = row.get("x")
-            if nav in {None, ""} or timestamp is None:
+            nav = row.get("DWJZ")
+            nav_date = str(row.get("FSRQ") or "")
+            if nav in {None, ""} or not nav_date:
                 continue
             price = float(nav)
-            bars.append(
-                {
-                    "date": datetime.fromtimestamp(float(timestamp) / 1000, SHANGHAI_TZ).date().isoformat(),
-                    "open": price,
-                    "high": price,
-                    "low": price,
-                    "close": price,
-                    "volume": None,
-                    "source": "eastmoney",
-                }
-            )
-        bars.sort(key=lambda item: item["date"])
-        return bars[-days:]
+            bar_date = datetime.fromisoformat(nav_date).date().isoformat()
+            bars_by_date[bar_date] = {
+                "date": bar_date,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+                "volume": None,
+                "source": "eastmoney",
+            }
+        return [bars_by_date[key] for key in sorted(bars_by_date)][-days:]
 
 
 class HybridMarketDataProvider:
@@ -463,6 +499,15 @@ class HybridMarketDataProvider:
         with self._lock:
             self._cache[key] = (now, value)
         return value
+
+    def invalidate(self, asset: dict[str, Any]) -> None:
+        provider_symbol = str(asset.get("provider_symbol") or "")
+        if not provider_symbol:
+            return
+        with self._lock:
+            for key in list(self._cache):
+                if key[1] == provider_symbol:
+                    self._cache.pop(key, None)
 
     def search(self, query: str, asset_class: str | None = None, subclass: str | None = None) -> list[dict[str, Any]]:
         local = self.demo.search(query, asset_class, subclass)
@@ -523,7 +568,7 @@ class HybridMarketDataProvider:
             try:
                 return self._cached(
                     ("fund-history", asset["provider_symbol"]),
-                    3600,
+                    int(os.getenv("MARKET_FUND_HISTORY_CACHE_SECONDS", "30")),
                     lambda: self.eastmoney.history(asset, days),
                 )
             except MarketDataError:

@@ -56,6 +56,16 @@ class StubEastmoneyFundProvider(EastmoneyFundProvider):
                     }
                 ],
             }
+        if url == self.nav_history_url:
+            return {
+                "ErrCode": 0,
+                "Data": {
+                    "LSJZList": [
+                        {"FSRQ": "2026-07-27", "DWJZ": "0.8472", "JZZZL": "2.05"},
+                        {"FSRQ": "2026-07-24", "DWJZ": "0.8302", "JZZZL": "-0.72"},
+                    ]
+                },
+            }
         return {}
 
     def _get_text(self, url):
@@ -377,13 +387,17 @@ class EastmoneyFundProviderTests(unittest.TestCase):
         self.assertEqual(asset["source"], "eastmoney")
 
         quote = self.provider.quote(asset)
-        self.assertEqual(quote["price"], 0.8302)
-        self.assertEqual(quote["quote_time"], "2026-07-24T20:00:00+08:00")
+        self.assertEqual(quote["price"], 0.8472)
+        self.assertEqual(quote["previous_close"], 0.8302)
+        self.assertEqual(quote["quote_time"], "2026-07-27T20:00:00+08:00")
         self.assertTrue(quote["is_delayed"])
 
         history = self.provider.history(asset)
-        self.assertEqual([item["date"] for item in history], ["2026-07-23", "2026-07-24"])
-        self.assertEqual(history[-1]["close"], 0.8302)
+        self.assertEqual(
+            [item["date"] for item in history],
+            ["2026-07-23", "2026-07-24", "2026-07-27"],
+        )
+        self.assertEqual(history[-1]["close"], 0.8472)
 
 
 class MarketServiceTests(unittest.TestCase):
@@ -521,6 +535,62 @@ class MarketServiceTests(unittest.TestCase):
         self.assertEqual(refreshed["quote"]["price"], 0.8302)
         self.assertEqual(refreshed["quote"]["source"], "eastmoney")
         self.assertEqual(refreshed["quote"]["quote_time"], "2026-07-24T20:00:00+08:00")
+
+    def test_otc_history_updates_automatically_when_the_quote_date_advances(self):
+        class AdvancingFundProvider:
+            def __init__(self):
+                self.history_calls = 0
+                self.invalidated = []
+
+            def invalidate(self, asset):
+                self.invalidated.append(asset["provider_symbol"])
+
+            def quote(self, asset):
+                return {
+                    "price": 0.8472,
+                    "previous_close": 0.8302,
+                    "currency": "CNY",
+                    "quote_time": "2026-07-27T20:00:00+08:00",
+                    "source": "eastmoney",
+                    "is_delayed": True,
+                }
+
+            def history(self, asset, days=520):
+                self.history_calls += 1
+                return [
+                    {"date": "2026-07-24", "close": 0.8302, "source": "eastmoney"},
+                    {"date": "2026-07-27", "close": 0.8472, "source": "eastmoney"},
+                ]
+
+        fund = self.service.db.ensure_asset(
+            {
+                "symbol": "026789",
+                "provider_symbol": "026789.OF",
+                "name": "中欧上证科创板人工智能指数A",
+                "asset_class": "fund",
+                "subclass": "otc",
+                "market": "CN",
+                "exchange": "OTC",
+                "currency": "CNY",
+                "source": "eastmoney",
+            }
+        )
+        old_bars = [
+            {"date": f"2026-06-{day:02d}", "close": 0.8, "source": "eastmoney"}
+            for day in range(1, 26)
+        ]
+        old_bars.append({"date": "2026-07-24", "close": 0.8302, "source": "eastmoney"})
+        self.service.db.upsert_daily_bars(fund["id"], old_bars)
+        provider = AdvancingFundProvider()
+        self.service.provider = provider
+
+        refreshed = self.service.refresh_asset(fund["id"])
+
+        self.assertEqual(provider.history_calls, 1)
+        self.assertEqual(refreshed["history"][-1]["date"], "2026-07-27")
+
+        self.service.refresh_asset(fund["id"], force=True)
+        self.assertEqual(provider.invalidated, ["026789.OF"])
 
 
 class MarketRouteTests(unittest.TestCase):

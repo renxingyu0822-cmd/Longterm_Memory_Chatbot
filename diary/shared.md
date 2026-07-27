@@ -489,3 +489,19 @@ LLM Response
 - All 23 market tests passed, and the focused 27-test verification set plus Python compilation and `git diff --check` passed.
 - The full chat test module remains at its pre-existing baseline of 7 failures and 1 error caused by stale API expectations, unintended live OpenAI calls, and an outdated script-tag assertion.
 - Synchronized the existing portfolio into four active habit records, restarted the Flask service, and verified the dashboard API and Chinese memory page at `http://127.0.0.1:8080`.
+
+## 2026-07-27 — Prompt Daily Official OTC-Fund NAV Updates
+
+**Provider and refresh changes:**
+
+- Replaced Eastmoney fund-search metadata as the OTC quote source with the official NAV-history API, which published the current NAV earlier while the search response remained stale.
+- Latest quotes now include the prior official NAV, allowing daily change and portfolio return calculations to update immediately.
+- Merged recent official NAV rows over the longer trend response so a delayed trend payload cannot hide the newly published date from asset history.
+- Added provider-cache invalidation for forced refreshes, shortened the fund-history cache to 30 seconds, and made normal background refreshes fetch history whenever the official quote date advances beyond the stored history date.
+- Documented the daily background behavior and `MARKET_FUND_HISTORY_CACHE_SECONDS` setting.
+
+**Verification:**
+
+- Added regression tests in which search metadata remains on 2026-07-24 while the official NAV response advances to 2026-07-27, plus service coverage for automatic history advancement and forced cache invalidation.
+- All 24 market tests, Python compilation, and `git diff --check` passed.
+- With a network-enabled local service, verified current official NAVs, daily changes, portfolio returns, and matching 2026-07-27 history rows for published domestic funds.

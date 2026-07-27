@@ -32,7 +32,7 @@ Open `http://localhost:8080/market`, or select **Investments / 投资** in the c
 - Asset detail pages with price history, risk metrics, and walk-forward backtests, plus a cost-aware probability-threshold simulation for stocks and exchange-traded funds.
 - Background refresh while the local server is running, plus Server-Sent Events for dashboard updates.
 
-The default `hybrid` provider uses Yahoo Finance on a best-effort basis for exchange-traded assets and Eastmoney for OTC fund search and official NAV history. If a network request or supported symbol is unavailable, the application may fall back to clearly labelled deterministic demo data. These sources are suitable for local prototyping only; use a licensed provider and review redistribution terms before any public release.
+The default `hybrid` provider uses Yahoo Finance on a best-effort basis for exchange-traded assets and Eastmoney for OTC fund search and official NAV history. OTC quotes are read from Eastmoney's official NAV-history response rather than its slower search metadata, and the background tracker checks for a newly published NAV every refresh cycle while the server is running. If a network request or supported symbol is unavailable, the application may fall back to clearly labelled deterministic demo data. These sources are suitable for local prototyping only; use a licensed provider and review redistribution terms before any public release.
 
 OTC funds do not have exchange-traded real-time prices. Their latest officially published NAV is treated as delayed data. An unknown OTC fund is never assigned a stock-like simulated intraday price.
 
@@ -116,6 +116,7 @@ All settings are optional except `OPENAI_API_KEY`.
 | `MARKET_DATA_PROVIDER` | `hybrid` | `hybrid` for network sources with demo fallback, or `demo` for deterministic offline data |
 | `MARKET_DB_PATH` | `src/data/investment.db` | Custom SQLite database path |
 | `MARKET_QUOTE_CACHE_SECONDS` | `30` | Quote cache lifetime for network-backed market data |
+| `MARKET_FUND_HISTORY_CACHE_SECONDS` | `30` | OTC-fund NAV-history cache lifetime; kept short so newly published daily NAVs appear promptly |
 | `MARKET_REFRESH_SECONDS` | `60` | Background tracker interval; values below 15 seconds are raised to 15 |
 | `THUMPER_HOST` | `127.0.0.1` | Flask bind address |
 | `THUMPER_PORT` | `8080` | Flask port |
