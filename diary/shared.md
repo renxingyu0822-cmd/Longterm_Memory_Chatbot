@@ -467,3 +467,25 @@ LLM Response
 - Expanded the market suite with OTC horizon, target-definition, binary probability, backtest, service, and legacy-record coverage.
 - Ran `python -m unittest tests.test_market -v`; all 20 market tests passed.
 - Python compilation, frontend JavaScript syntax checks, and `git diff --check` passed.
+
+## 2026-07-27 — Explainable Investment-Habit Memory
+
+**Persistence and derivation:**
+
+- Added deterministic, evidence-backed investment-habit derivation for dominant tracked/held asset types, repeated investment themes, and broad watchlist use before holding.
+- Added the `investment_habits` SQLite table with confidence, structured evidence, active/dismissed state, and timestamps.
+- Automatic synchronization now runs after watchlist changes, transactions, portfolio imports, and automatic watchlist repair. It remains non-critical so a habit-sync failure cannot block an investment action.
+- Avoided unsupported inferences about risk tolerance, financial capacity, trading skill, or long-term trading style.
+
+**Memory and chat integration:**
+
+- Investment habits now appear as core entries on the memory page and are included in greeting/chat context without requiring an OpenAI embedding call.
+- Deleting a generated habit marks it dismissed. Recalculation preserves that dismissal while the evidence is unchanged and reactivates the habit only when evidence changes.
+- Added current habits to the market dashboard JSON response and documented the separate deterministic memory path in the README.
+
+**Verification:**
+
+- Added database, derivation, service, chat-context, memory-rendering, and dismissal tests.
+- All 23 market tests passed, and the focused 27-test verification set plus Python compilation and `git diff --check` passed.
+- The full chat test module remains at its pre-existing baseline of 7 failures and 1 error caused by stale API expectations, unintended live OpenAI calls, and an outdated script-tag assertion.
+- Synchronized the existing portfolio into four active habit records, restarted the Flask service, and verified the dashboard API and Chinese memory page at `http://127.0.0.1:8080`.

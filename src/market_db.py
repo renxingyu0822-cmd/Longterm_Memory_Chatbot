@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import uuid
@@ -150,6 +151,18 @@ class MarketDatabase:
             body TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS investment_habits (
+            owner_id TEXT NOT NULL DEFAULT 'local',
+            habit_key TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            evidence_json TEXT NOT NULL DEFAULT '{}',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'dismissed')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(owner_id, habit_key)
         );
         """
         with self.connect() as connection:
@@ -593,6 +606,133 @@ class MarketDatabase:
                 params,
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def replace_investment_habits(
+        self,
+        habits: list[dict[str, Any]],
+        owner_id: str = DEFAULT_OWNER,
+    ) -> None:
+        """Replace derived habits while preserving a dismissal until evidence changes."""
+
+        normalized: dict[str, dict[str, Any]] = {}
+        for habit in habits:
+            habit_key = str(habit.get("habit_key") or "").strip()
+            summary = str(habit.get("summary") or "").strip()
+            if not habit_key or not summary:
+                continue
+            confidence = max(0.0, min(1.0, float(habit.get("confidence", 0.5))))
+            evidence_json = json.dumps(
+                habit.get("evidence") or {},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            normalized[habit_key] = {
+                "summary": summary,
+                "confidence": confidence,
+                "evidence_json": evidence_json,
+            }
+
+        now = utc_now_iso()
+        with self.connect() as connection:
+            existing_rows = connection.execute(
+                "SELECT * FROM investment_habits WHERE owner_id=?",
+                (owner_id,),
+            ).fetchall()
+            existing = {str(row["habit_key"]): dict(row) for row in existing_rows}
+
+            for habit_key, habit in normalized.items():
+                previous = existing.get(habit_key)
+                status = "active"
+                created_at = now
+                if previous:
+                    created_at = str(previous["created_at"])
+                    if (
+                        previous["status"] == "dismissed"
+                        and previous["evidence_json"] == habit["evidence_json"]
+                    ):
+                        status = "dismissed"
+                    if (
+                        previous["summary"] == habit["summary"]
+                        and previous["evidence_json"] == habit["evidence_json"]
+                        and abs(float(previous["confidence"]) - habit["confidence"]) < 1e-12
+                        and previous["status"] == status
+                    ):
+                        continue
+                connection.execute(
+                    """
+                    INSERT INTO investment_habits(
+                        owner_id, habit_key, summary, evidence_json, confidence,
+                        status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(owner_id, habit_key) DO UPDATE SET
+                        summary=excluded.summary,
+                        evidence_json=excluded.evidence_json,
+                        confidence=excluded.confidence,
+                        status=excluded.status,
+                        updated_at=excluded.updated_at
+                    """,
+                    (
+                        owner_id,
+                        habit_key,
+                        habit["summary"],
+                        habit["evidence_json"],
+                        habit["confidence"],
+                        status,
+                        created_at,
+                        now,
+                    ),
+                )
+
+            stale_keys = set(existing) - set(normalized)
+            if stale_keys:
+                placeholders = ",".join("?" for _ in stale_keys)
+                connection.execute(
+                    f"DELETE FROM investment_habits WHERE owner_id=? AND habit_key IN ({placeholders})",
+                    [owner_id, *sorted(stale_keys)],
+                )
+
+    def list_investment_habits(
+        self,
+        owner_id: str = DEFAULT_OWNER,
+        include_dismissed: bool = False,
+    ) -> list[dict[str, Any]]:
+        status_filter = "" if include_dismissed else "AND status='active'"
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM investment_habits
+                WHERE owner_id=? {status_filter}
+                ORDER BY confidence DESC, created_at, habit_key
+                """,
+                (owner_id,),
+            ).fetchall()
+        output = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["evidence"] = json.loads(item.pop("evidence_json"))
+            except (TypeError, ValueError):
+                item["evidence"] = {}
+                item.pop("evidence_json", None)
+            output.append(item)
+        return output
+
+    def dismiss_investment_habit(
+        self,
+        habit_key: str,
+        owner_id: str = DEFAULT_OWNER,
+    ) -> bool:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE investment_habits
+                SET status='dismissed', updated_at=?
+                WHERE owner_id=? AND habit_key=? AND status='active'
+                """,
+                (utc_now_iso(), owner_id, habit_key),
+            )
+        return cursor.rowcount > 0
 
     def calculate_positions(self, owner_id: str = DEFAULT_OWNER, include_closed: bool = False) -> list[dict[str, Any]]:
         transactions = list(reversed(self.list_transactions(owner_id)))

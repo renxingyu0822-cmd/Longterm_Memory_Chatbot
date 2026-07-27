@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
 from datetime import datetime
 from typing import Any
 
+from investment_habits import derive_investment_habits
 from market_data import MarketDataError, provider
 from market_db import DEFAULT_OWNER, MarketDatabase
 from prediction import (
@@ -29,6 +31,26 @@ class MarketService:
         self._analysis_cache: dict[int, tuple[float, dict[str, Any]]] = {}
         self._refresh_locks: dict[int, threading.Lock] = {}
         self._locks_guard = threading.Lock()
+        self._sync_investment_habits_safely()
+
+    def sync_investment_habits(self, owner_id: str = DEFAULT_OWNER) -> list[dict[str, Any]]:
+        habits = derive_investment_habits(
+            self.db.list_watchlist(owner_id),
+            self.db.calculate_positions(owner_id),
+            self.db.list_transactions(owner_id),
+        )
+        self.db.replace_investment_habits(habits, owner_id)
+        return self.db.list_investment_habits(owner_id)
+
+    def _sync_investment_habits_safely(
+        self,
+        owner_id: str = DEFAULT_OWNER,
+    ) -> list[dict[str, Any]]:
+        try:
+            return self.sync_investment_habits(owner_id)
+        except Exception:
+            logging.getLogger(__name__).exception("Investment habit sync failed")
+            return []
 
     def _asset_lock(self, asset_id: int) -> threading.Lock:
         with self._locks_guard:
@@ -66,8 +88,13 @@ class MarketService:
         asset_payload = payload.get("asset") if isinstance(payload.get("asset"), dict) else payload
         asset = self.db.ensure_asset(asset_payload)
         self.db.add_watchlist(int(asset["id"]), owner_id, str(payload.get("group_name") or "默认"))
+        self._sync_investment_habits_safely(owner_id)
         analysis = self.refresh_asset(int(asset["id"]))
         return analysis
+
+    def remove_watchlist(self, asset_id: int, owner_id: str = DEFAULT_OWNER) -> None:
+        self.db.remove_watchlist(asset_id, owner_id)
+        self._sync_investment_habits_safely(owner_id)
 
     def add_transaction(self, payload: dict[str, Any], owner_id: str = DEFAULT_OWNER) -> dict[str, Any]:
         if isinstance(payload.get("asset"), dict):
@@ -76,6 +103,7 @@ class MarketService:
         else:
             transaction_payload = payload
         transaction = self.db.add_transaction(transaction_payload, owner_id)
+        self._sync_investment_habits_safely(owner_id)
         asset_id = int(transaction["asset_id"])
         if not self.db.get_quote(asset_id):
             self.refresh_asset(asset_id)
@@ -204,6 +232,7 @@ class MarketService:
                 errors.append({"row": index, "label": label, "error": str(error)})
             except Exception:
                 errors.append({"row": index, "label": label, "error": "行情匹配暂时不可用"})
+        self._sync_investment_habits_safely(owner_id)
         return {
             "target": target,
             "total": len(rows),
@@ -338,6 +367,7 @@ class MarketService:
         for item in missing_watchlist:
             self.db.add_watchlist(int(item["id"]), owner_id)
         if missing_watchlist:
+            self._sync_investment_habits_safely(owner_id)
             watchlist = self.db.list_watchlist(owner_id)
         if refresh_missing:
             missing_ids = {
@@ -366,6 +396,7 @@ class MarketService:
             "watchlist_only": watchlist_only,
             "summary": self.db.portfolio_summary(owner_id),
             "tracked_count": len(set(self.db.tracked_asset_ids(owner_id))),
+            "investment_habits": self.db.list_investment_habits(owner_id),
         }
 
 

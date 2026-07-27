@@ -91,7 +91,9 @@ _MEMORY_UI = {
 load_dotenv()
 
 import memory
+from investment_habits import habit_key_from_memory_id, memory_id as investment_memory_id
 from market_routes import market_blueprint
+from market_service import service as market_service
 
 app = Flask(__name__)
 app.register_blueprint(market_blueprint)
@@ -202,6 +204,18 @@ _MEMORY_PAGE_COPY = {
 
 def _chat_language(value):
     return value if value in _LANG_INSTRUCTION else "en"
+
+
+def _investment_memory_summaries() -> list[str]:
+    try:
+        return [
+            str(item["summary"])
+            for item in market_service.db.list_investment_habits()
+            if item.get("summary")
+        ]
+    except Exception:
+        app.logger.exception("Failed to load investment habits")
+        return []
 
 
 _MULTI_MSG_INSTRUCTION = """
@@ -354,6 +368,23 @@ def memories():
         if len(ids) < len(docs):
             ids = [*ids, *([None] * (len(docs) - len(ids)))]
         raw_entries = list(zip(docs, metas, ids))
+        try:
+            investment_habits = market_service.db.list_investment_habits()
+        except Exception:
+            app.logger.exception("Failed to load investment habits for memory page")
+            investment_habits = []
+        raw_entries.extend(
+            (
+                habit["summary"],
+                {
+                    "category": "core",
+                    "importance": habit["confidence"],
+                    "source": "investment_activity",
+                },
+                investment_memory_id(habit["habit_key"]),
+            )
+            for habit in investment_habits
+        )
 
     def view_model(document, metadata, mem_id=None):
         meta = metadata or {}
@@ -400,7 +431,8 @@ def greet():
     lang = _chat_language(request.args.get("lang"))
     lang_note = _LANG_INSTRUCTION[lang]
 
-    is_first_meeting = memory.collection.count() == 0
+    investment_memories = _investment_memory_summaries()
+    is_first_meeting = memory.collection.count() == 0 and not investment_memories
     if is_first_meeting:
         prompt = "This is your first time meeting this user. Greet them warmly, introduce yourself as Thumper, and ask for their name. One or two sentences max."
     else:
@@ -411,6 +443,7 @@ def greet():
             d for d, m in zip(known_docs, known_metas)
             if m and m.get("category") == "core"
         ]
+        core_facts.extend(investment_memories)
         facts_block = "\n".join(f"- {f}" for f in core_facts[:5]) if core_facts else ""
         prompt = f"Welcome back the user like a friend you already know. Keep it short and casual — one or two sentences. Don't list what you know; just greet them naturally.{chr(10) + 'What you know: ' + chr(10) + facts_block if facts_block else ''}"
 
@@ -460,7 +493,9 @@ def chat():
         app.logger.exception("Failed to retrieve memories")
         return jsonify({"error": "The chat service is temporarily unavailable"}), 502
 
-    is_first_meeting = memory.collection.count() == 0
+    investment_memories = _investment_memory_summaries()
+    known_memories = [*relevant_memories, *investment_memories]
+    is_first_meeting = memory.collection.count() == 0 and not investment_memories
 
     if is_first_meeting:
         system_prompt = (
@@ -470,8 +505,8 @@ def chat():
             "ask warmly and naturally, like meeting someone new for the first time. "
             "Say 'nice to meet you' once you know their name."
         )
-    elif relevant_memories:
-        memory_block = "What you know about the user:\n" + "\n".join(f"- {m}" for m in relevant_memories)
+    elif known_memories:
+        memory_block = "What you know about the user:\n" + "\n".join(f"- {m}" for m in known_memories)
         system_prompt = f"{_BASE_SYSTEM_PROMPT}{_MULTI_MSG_INSTRUCTION}\n\nLANGUAGE: {lang_note}\n\n{memory_block}"
     else:
         system_prompt = f"{_BASE_SYSTEM_PROMPT}{_MULTI_MSG_INSTRUCTION}\n\nLANGUAGE: {lang_note}"
@@ -614,7 +649,11 @@ def nudge():
 @app.route("/memory/<memory_id>", methods=["DELETE"])
 def delete_memory(memory_id):
     try:
-        memory.collection.delete(ids=[memory_id])
+        investment_habit_key = habit_key_from_memory_id(memory_id)
+        if investment_habit_key:
+            market_service.db.dismiss_investment_habit(investment_habit_key)
+        else:
+            memory.collection.delete(ids=[memory_id])
     except Exception:
         app.logger.exception("Failed to delete memory %s", memory_id)
         return jsonify({"error": "Failed to delete memory"}), 500

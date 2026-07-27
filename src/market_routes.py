@@ -69,7 +69,7 @@ def watchlist():
 
 @market_blueprint.route("/api/market/watchlist/<int:asset_id>", methods=["DELETE"])
 def remove_watchlist(asset_id: int):
-    service.db.remove_watchlist(asset_id, DEFAULT_OWNER)
+    service.remove_watchlist(asset_id, DEFAULT_OWNER)
     return jsonify({"ok": True})
 
 

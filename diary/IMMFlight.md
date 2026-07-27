@@ -190,3 +190,54 @@
 
 - The updated investment behavior passed all 20 focused market tests, along with Python compilation and frontend JavaScript syntax checks.
 - The project was started at `http://127.0.0.1:8080`; duplicate old Flask processes were removed and one verified listener was retained.
+
+---
+
+## 2026-07-27 — OTC Fund NAV Refresh Diagnosis
+
+**What I worked on:**
+
+- Investigated why OTC-fund NAVs, daily changes, and portfolio returns had not updated by the evening.
+- Checked whether the tracked-asset count contained an unexpected extra item.
+
+**Operational outcome:**
+
+- Confirmed the background tracker and manual refresh endpoint were running normally; refreshed quotes were received at about 22:08 China time.
+- Confirmed all tracked domestic OTC funds still returned an official NAV dated 2026-07-24 from Eastmoney, while the tracked QDII fund remained dated 2026-07-23.
+- Determined that the unchanged UI values came from the upstream official NAV dates rather than frontend caching or a failed scheduler. No application code was changed.
+- Confirmed that `600519 贵州茅台` was added directly to the watchlist at 16:46 China time on 2026-07-26 without a transaction, increasing the tracked count from 14 to 15; it was not removed during diagnosis.
+
+---
+
+## 2026-07-27 — Investment-Habit Memory Status Check
+
+**What I worked on:**
+
+- Checked whether watchlist changes, portfolio imports, and investment transactions automatically produce long-term memories about investment habits or preferences.
+
+**Operational outcome:**
+
+- Confirmed that automatic memory extraction currently runs only for chat exchanges; investment actions persist in the separate SQLite investment store without invoking the Chroma memory pipeline.
+- Confirmed that the current long-term memory collection contains no investment-preference entries, and the unused `investment_notes` table is empty.
+- No application code or investment data was changed.
+
+---
+
+## 2026-07-27 — Automatic Investment-Habit Memory
+
+**What I worked on:**
+
+- Asked Codex to implement automatic recording of investment habits from watchlist, portfolio, transaction, and import activity.
+
+**Decisions made:**
+
+- Record only explainable patterns supported by current activity, such as dominant asset type, repeated theme interest, or maintaining a broad observation list.
+- Do not infer risk tolerance, financial capacity, trading skill, or durable trading style from sparse data.
+- Keep generated habits dismissible; a dismissed habit stays hidden until its supporting evidence changes.
+
+**Operational outcome:**
+
+- Investment actions now recompute and persist structured habits in SQLite, expose them through the market dashboard, show them as long-term memories, and inject them into chat context.
+- Existing data produced four active records: holdings primarily in OTC funds, tracked assets primarily in OTC funds, broad watchlist use before holding, and repeated technology-theme interest.
+- The focused 27-test verification set passed, including all 23 market tests and new chat/memory integration tests. Full chat tests remained at the known baseline of 7 failures and 1 error.
+- Restarted the local service and verified one listener at `http://127.0.0.1:8080`, a dashboard count of four investment habits, and successful rendering on the memory page.

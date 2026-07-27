@@ -151,6 +151,33 @@ class ChatRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertEqual(app.conversation_history, [])
 
+    @patch("app.memory.extract_and_store", return_value=[])
+    @patch("app._investment_memory_summaries", return_value=["用户当前关注的投资资产以场外基金为主。"])
+    @patch("app.memory.collection.count", return_value=1)
+    @patch("app.memory.retrieve", return_value=[])
+    @patch("app.client.chat.completions.create")
+    def test_investment_habits_are_injected_into_chat_context(
+        self,
+        create_completion,
+        _retrieve,
+        _count,
+        _investment_memories,
+        _extract,
+    ):
+        create_completion.return_value = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ACTION: REPLY\n明白。")
+                )
+            ]
+        )
+
+        response = self.client.post("/chat", json={"message": "看看我的投资习惯", "lang": "zh"})
+
+        self.assertEqual(response.status_code, 200)
+        system_prompt = create_completion.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("用户当前关注的投资资产以场外基金为主。", system_prompt)
+
 
 class RememberRouteTests(unittest.TestCase):
     def setUp(self):
@@ -211,8 +238,9 @@ class MemoriesRouteTests(unittest.TestCase):
         self.assertIn("用户的名字是小明", body)
         self.assertIn("示例数据", body)
 
+    @patch("app.market_service.db.list_investment_habits", return_value=[])
     @patch("app.memory.collection.get")
-    def test_memory_page_uses_selected_language(self, get_memories):
+    def test_memory_page_uses_selected_language(self, get_memories, _get_habits):
         get_memories.return_value = {"documents": [], "metadatas": []}
         expected_copy = {
             "en": ('lang="en"', "Long-term memory", "Back to chat"),
@@ -237,6 +265,32 @@ class MemoriesRouteTests(unittest.TestCase):
         self.assertIn("Der Benutzer heißt Alex", body)
         self.assertIn("Beispieldaten", body)
         self.assertIn("/memories?lang=de", body)
+
+    @patch("app.market_service.db.list_investment_habits")
+    @patch("app.memory.collection.get")
+    def test_investment_habits_appear_as_long_term_memories(self, get_memories, get_habits):
+        get_memories.return_value = {"documents": [], "metadatas": [], "ids": []}
+        get_habits.return_value = [
+            {
+                "habit_key": "tracked_subclass",
+                "summary": "用户当前关注的投资资产以场外基金为主（14/15）。",
+                "confidence": 0.9,
+            }
+        ]
+
+        response = self.client.get("/memories?lang=zh")
+        body = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("用户当前关注的投资资产以场外基金为主（14/15）。", body)
+        self.assertIn('data-id="investment-habit:tracked_subclass"', body)
+
+    @patch("app.market_service.db.dismiss_investment_habit", return_value=True)
+    def test_deleting_an_investment_memory_dismisses_the_habit(self, dismiss):
+        response = self.client.delete("/memory/investment-habit:tracked_subclass")
+
+        self.assertEqual(response.status_code, 200)
+        dismiss.assert_called_once_with("tracked_subclass")
 
 
 class IndexRouteTests(unittest.TestCase):

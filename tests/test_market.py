@@ -12,6 +12,7 @@ sys.path.insert(0, str(SRC_DIR))
 from market_data import DemoMarketDataProvider, EastmoneyFundProvider, MarketDataError  # noqa: E402
 from market_db import MarketDatabase  # noqa: E402
 from market_service import MarketService, service as route_service  # noqa: E402
+from investment_habits import derive_investment_habits  # noqa: E402
 from prediction import (  # noqa: E402
     HORIZONS,
     backtest,
@@ -107,6 +108,24 @@ class MarketDatabaseTests(unittest.TestCase):
         )
 
         self.assertEqual([item["id"] for item in self.db.list_watchlist()], [self.asset["id"]])
+
+    def test_dismissed_investment_habit_waits_for_new_evidence(self):
+        habit = {
+            "habit_key": "tracked_subclass",
+            "summary": "用户当前关注的投资资产以美股为主（3/3）。",
+            "confidence": 0.9,
+            "evidence": {"tracked_count": 3},
+        }
+        self.db.replace_investment_habits([habit])
+        self.assertEqual(len(self.db.list_investment_habits()), 1)
+
+        self.assertTrue(self.db.dismiss_investment_habit("tracked_subclass"))
+        self.db.replace_investment_habits([habit])
+        self.assertEqual(self.db.list_investment_habits(), [])
+
+        changed = {**habit, "evidence": {"tracked_count": 4}}
+        self.db.replace_investment_habits([changed])
+        self.assertEqual(len(self.db.list_investment_habits()), 1)
 
     def test_weighted_cost_and_profit_are_recalculated_from_transactions(self):
         asset_id = self.asset["id"]
@@ -265,6 +284,27 @@ class MarketDatabaseTests(unittest.TestCase):
         )
 
 
+class InvestmentHabitDerivationTests(unittest.TestCase):
+    def test_derives_only_evidence_backed_patterns(self):
+        watchlist = [
+            {"id": 1, "name": "人工智能指数A", "subclass": "otc"},
+            {"id": 2, "name": "科技智选混合A", "subclass": "otc"},
+            {"id": 3, "name": "5G通信联接A", "subclass": "otc"},
+            {"id": 4, "name": "消费行业混合A", "subclass": "otc"},
+            {"id": 5, "name": "农业产业混合C", "subclass": "otc"},
+            {"id": 6, "name": "贵州茅台", "subclass": "cn"},
+        ]
+        positions = [watchlist[0], watchlist[1]]
+
+        habits = derive_investment_habits(watchlist, positions)
+        keys = {item["habit_key"] for item in habits}
+
+        self.assertIn("tracked_subclass", keys)
+        self.assertIn("held_subclass", keys)
+        self.assertIn("theme_interest:technology", keys)
+        self.assertTrue(all("风险承受" not in item["summary"] for item in habits))
+
+
 class PredictionTests(unittest.TestCase):
     def setUp(self):
         self.provider = DemoMarketDataProvider()
@@ -376,6 +416,17 @@ class MarketServiceTests(unittest.TestCase):
         dashboard = self.service.dashboard(refresh_missing=False)
         self.assertEqual(len(dashboard["positions"]), 1)
         self.assertEqual(len(dashboard["watchlist_only"]), 0)
+
+    def test_watchlist_actions_automatically_record_an_investment_habit(self):
+        for symbol in ("AAPL", "MSFT", "NVDA"):
+            asset = self.service.search(symbol, "stock", "us")[0]
+            self.service.add_watchlist({"asset": asset})
+
+        habits = self.service.db.list_investment_habits()
+
+        self.assertEqual([item["habit_key"] for item in habits], ["tracked_subclass"])
+        self.assertIn("美股", habits[0]["summary"])
+        self.assertEqual(habits[0]["evidence"]["tracked_count"], 3)
 
     def test_otc_fund_predictions_have_four_binary_end_vs_start_horizons(self):
         result = self.service.search("110022", "fund", "otc")[0]

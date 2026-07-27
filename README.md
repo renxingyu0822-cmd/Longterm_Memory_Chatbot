@@ -12,6 +12,7 @@ Thumper is a local-first conversational companion with persistent long-term memo
 - Deterministic reply timing: after the model responds, the UI waits for the user to be idle before displaying the reply, without dropping messages sent during processing.
 - English, Simplified Chinese, and German chat modes, switchable during a conversation.
 - Automatic extraction of durable facts and recent events with `gpt-4o-mini`.
+- Explainable investment-habit memories derived from watchlist and portfolio actions without guessing risk tolerance from sparse data.
 - Semantic retrieval with `text-embedding-3-small` and a local persistent Chroma collection.
 - Two memory categories: permanent `core` memories and decaying `episodic` memories.
 - Relative dates such as “tomorrow” and “明天” are resolved to a concrete date when the memory is recorded.
@@ -153,6 +154,14 @@ A holdings import records one opening `buy` transaction, or one `subscribe` tran
 4. **Extraction** — after a visible reply, `gpt-4o-mini` extracts useful facts and classifies them as `core` or `episodic`.
 5. **Duplicate and conflict handling** — near-identical memories are skipped; sufficiently similar memories are treated as the same topic and the older entry is replaced.
 6. **Forgetting** — episodic memory strength follows `importance × e^(−0.1 × days_since_last_access)`. Entries below the pruning threshold are removed on startup.
+
+Investment actions use a separate deterministic memory path. Adding or removing
+watchlist items, recording transactions, and importing a portfolio recomputes
+evidence-backed habits such as a dominant asset type, repeated theme interest,
+or maintaining a broad observation list before holding. These habits are stored
+in SQLite, shown as long-term memories, and supplied to chat context. Dismissing
+one hides it until the supporting evidence changes. The rules do not infer risk
+tolerance, financial capacity, or trading skill from limited activity.
 7. **Persistence** — memories are stored in `src/chroma_db/` and survive server restarts until forgotten or manually deleted.
 
 | Category | Typical content | Behaviour |
@@ -164,6 +173,7 @@ A holdings import records one opening `buy` transaction, or one `subscribe` tran
 
 - Chroma memories are stored under `src/chroma_db/`.
 - Investment assets, quotes, history, transactions, and predictions are stored in `src/data/investment.db` by default.
+- Automatically derived investment habits are stored in the same investment database and remain separate from model-extracted Chroma memories.
 - Both locations are ignored by Git.
 - The current application is a single-user local prototype with the fixed investment owner `local`; it does not provide authentication or multi-user isolation.
 - Memory chat history is process-global and non-persistent, so this version should not be exposed as a multi-user production service.
