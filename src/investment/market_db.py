@@ -34,7 +34,7 @@ def utc_now_iso() -> str:
 class MarketDatabase:
     def __init__(self, path: str | Path | None = None):
         configured = path or os.getenv("MARKET_DB_PATH")
-        self.path = Path(configured) if configured else Path(__file__).parent / "data" / "investment.db"
+        self.path = Path(configured) if configured else Path(__file__).parent.parent / "data" / "investment.db"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.init_schema()
 

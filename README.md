@@ -1,6 +1,6 @@
 # Thumper — Long-Term Memory Chatbot
 
-Thumper is a local-first conversational companion with persistent long-term memory and a personal investment research workspace. It combines an OpenAI-powered chat experience, Chroma-based memory retrieval, and a SQLite-backed stock and fund tracker in one Flask application.
+Thumper is a local-first conversational companion with persistent long-term memory and an optional personal investment research workspace. It combines an OpenAI-powered chat experience and Chroma-based memory retrieval in a Flask chatbot, with a separately runnable investment service that the chatbot can query as a tool when needed.
 
 > The investment features are experimental research tools. They are not investment advice, trading signals, or promises of future performance.
 
@@ -90,10 +90,10 @@ OPENAI_API_KEY=your_api_key_here
 
 The API key is required for chat, embeddings, memory extraction, and image/rich-document portfolio imports. Delimited text, JSON, and XLSX imports are parsed locally.
 
-### 4. Run the web application
+### 4. Run the chatbot
 
 ```bash
-cd src
+cd src/chatbot
 python app.py
 ```
 
@@ -101,9 +101,21 @@ Then open:
 
 - Chat: `http://localhost:8080`
 - Memories: `http://localhost:8080/memories`
-- Investment workspace: `http://localhost:8080/market`
 
-The background market tracker starts when `src/app.py` is run directly. Chat conversation history is kept in process memory and is cleared when the server restarts; extracted memories and investment data persist locally.
+Chat conversation history is kept in process memory and clears on restart; extracted memories persist in `src/chroma_db/`.
+
+### 5. Run the investment service (optional)
+
+The investment workspace is a separate process. Start it in a second terminal if you want portfolio and market features:
+
+```bash
+cd src/investment
+python investment_app.py
+```
+
+Then open `http://localhost:8081/market`.
+
+The background market tracker starts with the investment service and refreshes tracked assets while the process is running. When the chatbot detects a question about investments, it queries the investment service automatically via HTTP. Investment habits are injected into chat context only after the first investment tool call in a session.
 
 ## Configuration
 
@@ -118,9 +130,12 @@ All settings are optional except `OPENAI_API_KEY`.
 | `MARKET_QUOTE_CACHE_SECONDS` | `30` | Quote cache lifetime for network-backed market data |
 | `MARKET_FUND_HISTORY_CACHE_SECONDS` | `30` | OTC-fund NAV-history cache lifetime; kept short so newly published daily NAVs appear promptly |
 | `MARKET_REFRESH_SECONDS` | `60` | Background tracker interval; values below 15 seconds are raised to 15 |
-| `THUMPER_HOST` | `127.0.0.1` | Flask bind address |
-| `THUMPER_PORT` | `8080` | Flask port |
+| `THUMPER_HOST` | `127.0.0.1` | Chatbot Flask bind address |
+| `THUMPER_PORT` | `8080` | Chatbot Flask port |
 | `THUMPER_DEBUG` | `1` | Enable Flask debug mode when set to `1` |
+| `INVESTMENT_SERVICE_URL` | `http://127.0.0.1:8081` | URL the chatbot uses to reach the investment service |
+| `INVESTMENT_HOST` | `127.0.0.1` | Investment service bind address |
+| `INVESTMENT_PORT` | `8081` | Investment service port |
 
 For an offline investment demo, set `MARKET_DATA_PROVIDER=demo`. Chat and memory features still require OpenAI access.
 
@@ -182,29 +197,36 @@ tolerance, financial capacity, or trading skill from limited activity.
 ## Project Structure
 
 ```text
-├── diary/                     # Contributor work diary
+├── diary/                         # Contributor work diary
 ├── tests/
-│   ├── test_app.py            # Chat, memory API, and UI route tests
-│   ├── test_market.py         # Market database, provider, analytics, and route tests
-│   ├── test_memory.py         # Relative-date and episodic-memory tests
+│   ├── test_app.py                # Chat, memory API, and UI route tests
+│   ├── test_market.py             # Market database, provider, analytics, and route tests
+│   ├── test_memory.py             # Relative-date and episodic-memory tests
 │   └── test_portfolio_import.py
 └── src/
-    ├── app.py                 # Flask app, chat routes, memory routes, server startup
-    ├── main.py                # Minimal command-line chat client
-    ├── memory.py              # Memory extraction, Chroma storage, retrieval, and decay
-    ├── extractor.py           # Legacy CLI memory extractor
-    ├── market_routes.py       # Investment pages and JSON/SSE endpoints
-    ├── market_service.py      # Portfolio, import, refresh, and analytics orchestration
-    ├── market_db.py           # SQLite schema and portfolio calculations
-    ├── market_data.py         # Yahoo, Eastmoney, hybrid, and demo providers
-    ├── market_tracker.py      # Background refresh worker
-    ├── portfolio_import.py    # Local and OpenAI-assisted file parsing
-    ├── prediction.py          # Probabilities, risk, backtests, and simulation
+    ├── investment_habits.py       # Shared: deterministic habit derivation (used by both services)
+    ├── main.py                    # Legacy command-line chat client
+    ├── extractor.py               # Legacy CLI memory extractor
     ├── requirements.txt
-    ├── chroma_db/             # Auto-created local memory database (Git-ignored)
-    ├── data/                  # Auto-created investment database/logs (Git-ignored)
-    ├── static/                # Avatar and chat/investment frontend assets
-    └── templates/             # Chat, memories, market, and asset-detail pages
+    ├── chroma_db/                 # Auto-created vector memory store (Git-ignored)
+    ├── data/                      # Auto-created investment database (Git-ignored)
+    ├── chatbot/                   # Chatbot service — run with: python chatbot/app.py
+    │   ├── app.py                 # Flask app, chat routes, memory routes
+    │   ├── memory.py              # Memory extraction, Chroma storage, retrieval, and decay
+    │   ├── investment_tools.py    # HTTP bridge: exposes investment service as LLM tools
+    │   ├── static/                # Avatar (thumper.png)
+    │   └── templates/             # Chat and memories pages
+    └── investment/                # Investment service — run with: python investment/investment_app.py
+        ├── investment_app.py      # Flask entry point (port 8081), habits endpoints
+        ├── market_routes.py       # Investment pages and JSON/SSE endpoints
+        ├── market_service.py      # Portfolio, import, refresh, and analytics orchestration
+        ├── market_db.py           # SQLite schema and portfolio calculations
+        ├── market_data.py         # Yahoo, Eastmoney, hybrid, and demo providers
+        ├── market_tracker.py      # Background refresh worker
+        ├── portfolio_import.py    # Local and OpenAI-assisted file parsing
+        ├── prediction.py          # Probabilities, risk, backtests, and simulation
+        ├── static/                # Market and asset-detail frontend assets
+        └── templates/             # Market and asset-detail pages
 ```
 
 ## Tests

@@ -1,7 +1,12 @@
 import re
 import json
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timedelta
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).parent.parent))  # expose src/ so investment_habits is importable
 
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
@@ -92,13 +97,12 @@ load_dotenv()
 
 import memory
 from investment_habits import habit_key_from_memory_id, memory_id as investment_memory_id
-from market_routes import market_blueprint
-from market_service import service as market_service
+import investment_tools
 
 app = Flask(__name__)
-app.register_blueprint(market_blueprint)
 client = OpenAI()
 conversation_history = []
+_investment_session_active = False  # only inject habits after user actively uses investment tools
 
 pruned = memory.forget()
 if pruned:
@@ -205,17 +209,6 @@ _MEMORY_PAGE_COPY = {
 def _chat_language(value):
     return value if value in _LANG_INSTRUCTION else "en"
 
-
-def _investment_memory_summaries() -> list[str]:
-    try:
-        return [
-            str(item["summary"])
-            for item in market_service.db.list_investment_habits()
-            if item.get("summary")
-        ]
-    except Exception:
-        app.logger.exception("Failed to load investment habits")
-        return []
 
 
 _MULTI_MSG_INSTRUCTION = """
@@ -369,9 +362,10 @@ def memories():
             ids = [*ids, *([None] * (len(docs) - len(ids)))]
         raw_entries = list(zip(docs, metas, ids))
         try:
-            investment_habits = market_service.db.list_investment_habits()
+            import requests as _req
+            _r = _req.get("http://127.0.0.1:8081/api/habits", timeout=2)
+            investment_habits = _r.json().get("habits", [])
         except Exception:
-            app.logger.exception("Failed to load investment habits for memory page")
             investment_habits = []
         raw_entries.extend(
             (
@@ -422,7 +416,9 @@ def memories():
 
 @app.route("/reset", methods=["POST"])
 def reset():
+    global _investment_session_active
     conversation_history.clear()
+    _investment_session_active = False
     return jsonify({"ok": True})
 
 
@@ -431,7 +427,7 @@ def greet():
     lang = _chat_language(request.args.get("lang"))
     lang_note = _LANG_INSTRUCTION[lang]
 
-    investment_memories = _investment_memory_summaries()
+    investment_memories = investment_tools.habit_summaries() if _investment_session_active else []
     is_first_meeting = memory.collection.count() == 0 and not investment_memories
     if is_first_meeting:
         prompt = "This is your first time meeting this user. Greet them warmly, introduce yourself as Thumper, and ask for their name. One or two sentences max."
@@ -493,7 +489,7 @@ def chat():
         app.logger.exception("Failed to retrieve memories")
         return jsonify({"error": "The chat service is temporarily unavailable"}), 502
 
-    investment_memories = _investment_memory_summaries()
+    investment_memories = investment_tools.habit_summaries() if _investment_session_active else []
     known_memories = [*relevant_memories, *investment_memories]
     is_first_meeting = memory.collection.count() == 0 and not investment_memories
 
@@ -511,21 +507,60 @@ def chat():
     else:
         system_prompt = f"{_BASE_SYSTEM_PROMPT}{_MULTI_MSG_INSTRUCTION}\n\nLANGUAGE: {lang_note}"
 
+    from typing import cast
+    from openai.types.chat import ChatCompletionMessageParam
+
+    llm_messages: list[dict] = (
+        [{"role": "system", "content": system_prompt}]
+        + list(conversation_history)
+        + [{"role": "user", "content": user_input}]
+    )
+
     try:
-        from typing import cast
-        from openai.types.chat import ChatCompletionMessageParam
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=cast(
-                list[ChatCompletionMessageParam],
-                [{"role": "system", "content": system_prompt}]
-                + conversation_history
-                + [{"role": "user", "content": user_input}]
-            ),
+            messages=cast(list[ChatCompletionMessageParam], llm_messages),
+            tools=cast(Any, investment_tools.TOOLS),
+            tool_choice="auto",
         )
     except Exception:
         app.logger.exception("Failed to generate a chat response")
         return jsonify({"error": "The chat service is temporarily unavailable"}), 502
+
+    # Tool-call loop — let the LLM query investment data if it needs to (max 3 rounds)
+    for _ in range(3):
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls:
+            break
+        global _investment_session_active
+        _investment_session_active = True
+        llm_messages.append({
+            "role": "assistant",
+            "content": response.choices[0].message.content,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in tool_calls
+            ],
+        })
+        for tc in tool_calls:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            result = investment_tools.execute(tc.function.name, args)
+            llm_messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=cast(list[ChatCompletionMessageParam], llm_messages),
+            )
+        except Exception:
+            app.logger.exception("Failed to generate chat response after tool call")
+            return jsonify({"error": "The chat service is temporarily unavailable"}), 502
 
     raw_response = response.choices[0].message.content
     if not raw_response:
@@ -651,7 +686,7 @@ def delete_memory(memory_id):
     try:
         investment_habit_key = habit_key_from_memory_id(memory_id)
         if investment_habit_key:
-            market_service.db.dismiss_investment_habit(investment_habit_key)
+            investment_tools.dismiss_habit(investment_habit_key)
         else:
             memory.collection.delete(ids=[memory_id])
     except Exception:
@@ -661,9 +696,6 @@ def delete_memory(memory_id):
 
 
 if __name__ == "__main__":
-    from market_tracker import tracker
-
-    tracker.start()
     app.run(
         debug=os.getenv("THUMPER_DEBUG", "1") == "1",
         host=os.getenv("THUMPER_HOST", "127.0.0.1"),

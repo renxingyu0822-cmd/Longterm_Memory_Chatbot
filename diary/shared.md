@@ -490,6 +490,71 @@ LLM Response
 - The full chat test module remains at its pre-existing baseline of 7 failures and 1 error caused by stale API expectations, unintended live OpenAI calls, and an outdated script-tag assertion.
 - Synchronized the existing portfolio into four active habit records, restarted the Flask service, and verified the dashboard API and Chinese memory page at `http://127.0.0.1:8080`.
 
+## 2026-07-29
+
+### Investment Service Split + File Structure Reorganization
+
+**Context:**
+
+After pulling IMMFlight's investment feature, the investment logic was fully embedded in `app.py` — market routes registered on the same Flask app, background tracker auto-started at chatbot launch, and investment habits passively injected into every system prompt. dafei refactored this into two independent services.
+
+**Two-service architecture:**
+
+- Chatbot runs on port 8080 (`chatbot/app.py`)
+- Investment service runs on port 8081 (`investment/investment_app.py`)
+- Chatbot calls investment via HTTP tool calls (OpenAI function calling), not direct Python imports
+- Investment service is optional: chatbot degrades gracefully if port 8081 is not running
+
+**Habit injection changed to on-demand:**
+
+Previously, investment habits were passively injected into every chat system prompt regardless of whether the user was discussing investments. Changed to session-activated injection:
+
+- `_investment_session_active = False` by default
+- Flag is set to `True` the first time the LLM triggers an investment tool call
+- Habit injection only happens when the flag is active
+- Flag resets when the user resets the conversation
+- Rationale: the project goal is a long-term memory chatbot, not an investment assistant; investment is an optional add-on
+
+**Bug fixed:**
+
+`investment_memory_id` was referenced in the `/memories` route but never imported, causing a `NameError`. Fixed by importing `memory_id` from `investment_habits` and aliasing it: `from investment_habits import habit_key_from_memory_id, memory_id as investment_memory_id`.
+
+**File structure reorganized:**
+
+All source files moved from flat `src/` into two subdirectories:
+
+```
+src/
+├── chatbot/               ← app.py, memory.py, investment_tools.py
+│   ├── templates/         ← index.html, memories.html
+│   └── static/            ← thumper.png
+├── investment/            ← investment_app.py, market_*.py, prediction.py, portfolio_import.py
+│   ├── templates/         ← market.html, asset_detail.html, market_not_found.html
+│   └── static/            ← market.js, market.css, asset_detail.js
+├── investment_habits.py   ← shared by both sides, stays at src/ root
+├── data/                  ← investment.db
+├── chroma_db/             ← vector DB
+└── requirements.txt
+```
+
+`investment_habits.py` is kept at `src/` root because both `market_service.py` (investment side) and `app.py` (chatbot side) import from it.
+
+**Path fixes:**
+
+- `chatbot/memory.py`: `chroma_db` path changed from `parent/chroma_db` to `parent.parent/chroma_db` → resolves to `src/chroma_db/` ✓
+- `investment/market_db.py`: `investment.db` path changed from `parent/data/investment.db` to `parent.parent/data/investment.db` → resolves to `src/data/investment.db` ✓
+- Both entry points add `src/` to `sys.path` so `investment_habits` is importable as a shared module
+
+**How to start:**
+
+```bash
+# Terminal 1 — investment service (optional)
+cd src/investment && python investment_app.py
+
+# Terminal 2 — chatbot
+cd src/chatbot && python app.py
+```
+
 ## 2026-07-27 — Prompt Daily Official OTC-Fund NAV Updates
 
 **Provider and refresh changes:**

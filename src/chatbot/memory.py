@@ -11,7 +11,7 @@ from openai import OpenAI
 
 client = OpenAI()
 
-_chroma = chromadb.PersistentClient(path=str(Path(__file__).parent / "chroma_db"))
+_chroma = chromadb.PersistentClient(path=str(Path(__file__).parent.parent / "chroma_db"))
 collection = _chroma.get_or_create_collection("memories")
 
 _EXTRACT_PROMPT = """You are a memory extraction assistant. Given a conversation exchange, extract anything worth remembering about the user.
@@ -164,14 +164,14 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
     embeddings = [r.embedding for r in embeddings_response.data]
 
     new_texts, new_embeddings, new_metas = [], [], []
+    conflicts: list[dict] = []
     for text, emb, item in zip(texts, embeddings, items):
         if collection.count() > 0:
             hit = collection.query(
                 query_embeddings=np.array([emb], dtype=np.float32),
                 n_results=1,
-                include=["distances"],
+                include=["distances", "documents", "metadatas"],
             )
-            # Safely extract distance and id values; the Chroma client may return None or empty lists
             distances = hit.get("distances") or []
             first_dist_list = distances[0] if distances else None
             dist = float(first_dist_list[0]) if first_dist_list and len(first_dist_list) > 0 else 1.0
@@ -179,12 +179,22 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
             if dist < 0.15:
                 continue  # near-identical, skip
             if dist < 0.5:
-                # same topic, different value — delete old and store new
-                ids = hit.get("ids") or []
-                first_id_list = ids[0] if ids else None
-                old_id = first_id_list[0] if first_id_list and len(first_id_list) > 0 else None
+                # Conflict: same topic, different value — hold for user confirmation
+                ids_r = (hit.get("ids") or [[]])[0] or []
+                docs_r = (hit.get("documents") or [[]])[0] or []
+                metas_r = (hit.get("metadatas") or [[]])[0] or []
+                old_id = ids_r[0] if ids_r else None
+                old_text = str(docs_r[0]) if docs_r else ""
+                old_meta = (metas_r[0] or {}) if metas_r else {}
                 if old_id:
-                    collection.delete(ids=[old_id])
+                    conflicts.append({
+                        "old_id": old_id,
+                        "old_text": old_text,
+                        "new_text": text,
+                        "category": item.get("category", old_meta.get("category", "episodic")),
+                        "importance": float(item.get("importance", old_meta.get("importance", 0.5))),
+                    })
+                continue  # don't auto-replace — wait for confirmation
         new_texts.append(text)
         new_embeddings.append(emb)
         metadata = {
@@ -201,16 +211,23 @@ def extract_and_store(user_message: str, assistant_message: str) -> list[str]:
                 metadata["event_date"] = relative_dates[0]
         new_metas.append(metadata)
 
-    if not new_texts:
-        return []
+    if new_texts:
+        collection.add(
+            documents=new_texts,
+            embeddings=np.array(new_embeddings, dtype=np.float32),
+            metadatas=new_metas,
+            ids=[str(uuid.uuid4()) for _ in new_texts],
+        )
+    return new_texts, conflicts
 
-    collection.add(
-        documents=new_texts,
-        embeddings=np.array(new_embeddings, dtype=np.float32),
-        metadatas=new_metas,
-        ids=[str(uuid.uuid4()) for _ in new_texts],
-    )
-    return new_texts
+
+def apply_conflict(old_id: str, new_text: str, category: str = "episodic", importance: float = 0.5) -> None:
+    """Replace an old conflicting memory with the confirmed new value."""
+    try:
+        collection.delete(ids=[old_id])
+    except Exception:
+        pass
+    store(new_text.strip(), category=category, importance=importance)
 
 
 def store(memory_text: str, category: str = "core", importance: float = 0.9, memory_id: str | None = None) -> None:
