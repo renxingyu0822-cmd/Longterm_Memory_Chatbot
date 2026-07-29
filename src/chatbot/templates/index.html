@@ -328,16 +328,6 @@
     button:hover { opacity: 0.85; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    .typing {
-      align-self: flex-start;
-      background: #f0f2f5;
-      padding: 12px 16px;
-      border-radius: 12px;
-      border-bottom-left-radius: 4px;
-      font-size: 14px;
-      color: #888;
-    }
-
     @media (max-width: 520px) {
       .chat-container { width: 100%; height: 100vh; border-radius: 0; }
       .chat-header { padding: 14px 16px; }
@@ -382,7 +372,7 @@
     <div class="chat-header">
       <div>Thumper <span id="powered">powered by GPT-4o-mini</span></div>
       <div class="header-actions">
-        <a class="memory-btn" id="market-link" href="/market">📈 <span id="market-label">Investments</span></a>
+        <a class="memory-btn" id="market-link" href="{{ investment_market_url }}">📈 <span id="market-label">Investments</span></a>
         <a class="memory-btn" id="memory-link" href="/memories">🧠 <span id="mem-label">Memories</span></a>
         <button class="memory-btn" id="settings-button" type="button" aria-label="Settings" title="Settings">⚙</button>
       </div>
@@ -402,11 +392,12 @@
     const settingsOverlay = document.getElementById("settings-overlay");
     const settingsButton = document.getElementById("settings-button");
     const settingsClose = document.getElementById("settings-close");
+    const investmentMarketUrl = {{ investment_market_url | tojson }};
 
     const UI = {
-      en: { placeholder: "Type a message...", send: "Send", thinking: "Typing...", memories: "Memories", investments: "Investments", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
-      zh: { placeholder: "输入消息...", send: "发送", thinking: "正在输入...", memories: "记忆", investments: "投资", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
-      de: { placeholder: "Nachricht eingeben...", send: "Senden", thinking: "Tippt...", memories: "Erinnerungen", investments: "Investments", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
+      en: { placeholder: "Type a message...", send: "Send", memories: "Memories", investments: "Investments", settings: "Settings", settingsTitle: "Settings", language: "Language", close: "Close", powered: "powered by GPT-4o-mini", remembered: "💾 Remembered:" },
+      zh: { placeholder: "输入消息...", send: "发送", memories: "记忆", investments: "投资", settings: "设置", settingsTitle: "设置", language: "语言", close: "关闭", powered: "由 GPT-4o-mini 驱动", remembered: "💾 已记住：" },
+      de: { placeholder: "Nachricht eingeben...", send: "Senden", memories: "Erinnerungen", investments: "Investments", settings: "Einstellungen", settingsTitle: "Einstellungen", language: "Sprache", close: "Schließen", powered: "betrieben von GPT-4o-mini", remembered: "💾 Gemerkt:" },
     };
 
     const savedLang = sessionStorage.getItem("lang");
@@ -428,7 +419,9 @@
       document.getElementById("settings-language-label").textContent = u.language;
       settingsClose.setAttribute("aria-label", u.close);
       document.getElementById("memory-link").href = `/memories?lang=${lang}`;
-      document.getElementById("market-link").href = `/market?lang=${lang}`;
+      const marketUrl = new URL(investmentMarketUrl, window.location.href);
+      marketUrl.searchParams.set("lang", lang);
+      document.getElementById("market-link").href = marketUrl.toString();
       document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
       document.querySelectorAll(".settings-lang-option").forEach(option => {
         const isActive = option.dataset.settingsLang === lang;
@@ -559,51 +552,41 @@
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    // Multi-message state
+    // Multi-message queue: messages are rendered immediately, then processed
+    // sequentially in the background. Closely spaced sends share one batch.
+    const MESSAGE_BATCH_MS = 800;
     let messageBuffer = [];
     let chatState = "idle"; // "idle" | "thinking" | "waiting"
     let nudgeTimer = null;
     let batchTimer = null;
-    let callChatInProgress = false; // mutex: prevents concurrent callChat calls
-    let lastKeystrokeAt = 0;        // timestamp of last input event
+    let callChatInProgress = false;
+    let greetInProgress = false;
+    let lastMessageQueuedAt = 0;
+    let lastKeystrokeAt = 0;
 
-    function makeTypingRow() {
-      const row = document.createElement("div");
-      row.className = "bot-row";
-      const av = document.createElement("img");
-      av.className = "bot-avatar";
-      av.src = "/static/thumper.png";
-      av.alt = "Thumper";
-      const dot = document.createElement("div");
-      dot.className = "typing";
-      dot.textContent = UI[currentLang].thinking;
-      row.appendChild(av);
-      row.appendChild(dot);
-      return row;
-    }
-
-    async function showBlocks(blocks) {
+    function showBlocks(blocks) {
       for (let i = 0; i < blocks.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, 250 + Math.random() * 150));
-        const tr = makeTypingRow();
-        messagesEl.appendChild(tr);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
-        const typingMs = Math.min(350 + blocks[i].length * 38 + Math.random() * 200, 3000);
-        await new Promise(r => setTimeout(r, typingMs));
-        tr.remove();
         addMessage(blocks[i], "bot", { showAvatar: i === 0 });
       }
     }
 
+    function scheduleChat() {
+      clearTimeout(batchTimer);
+      batchTimer = null;
+      if (messageBuffer.length === 0) return;
+
+      const delay = Math.max(0, MESSAGE_BATCH_MS - (Date.now() - lastMessageQueuedAt));
+      batchTimer = setTimeout(() => {
+        batchTimer = null;
+        callChat();
+      }, delay);
+    }
+
     async function callChat() {
-      if (callChatInProgress) {
-        clearTimeout(batchTimer);
-        batchTimer = setTimeout(() => { batchTimer = null; callChat(); }, 500);
-        return;
-      }
+      if (callChatInProgress || greetInProgress || messageBuffer.length === 0) return;
+
       callChatInProgress = true;
       chatState = "thinking";
-      sendBtn.disabled = true;
 
       const snapshot = [...messageBuffer];
 
@@ -619,12 +602,10 @@
         if (data.action === "wait") {
           if (messageBuffer.length > snapshot.length) {
             chatState = "idle";
-            callChatInProgress = false;
-            await callChat();
+            scheduleChat();
             return;
           }
           chatState = "waiting";
-          sendBtn.disabled = false;
           inputEl.focus();
           nudgeTimer = setTimeout(callNudge, 60000);
           return;
@@ -634,29 +615,27 @@
         // during the LLM call stay in the buffer for the next callChat.
         messageBuffer.splice(0, snapshot.length);
         chatState = "idle";
-        sendBtn.disabled = false;
         inputEl.focus();
         await new Promise(r => setTimeout(r, 500));
         // Poll until the user has been idle long enough:
         //   input has content → wait for 20s of no keystrokes
-        //   input empty       → wait for 5s of no keystrokes
+        //   input empty       → wait for 1.5s of no keystrokes
         while (true) {
           const idleMs = Date.now() - lastKeystrokeAt;
-          const threshold = inputEl.value.trim().length > 0 ? 20000 : 5000;
+          const threshold = inputEl.value.trim().length > 0 ? 20000 : 1500;
           if (idleMs >= threshold) break;
           await new Promise(r => setTimeout(r, 200));
         }
-        await showBlocks(data.blocks || []);
+        showBlocks(data.blocks || []);
         addMemoryTag(data.memories_saved);
       } catch (e) {
+        messageBuffer.splice(0, snapshot.length);
         addMessage(e.message || "Something went wrong. Please try again.", "bot");
         chatState = "idle";
       } finally {
         callChatInProgress = false;
-        if (chatState !== "waiting") {
-          sendBtn.disabled = false;
-          inputEl.focus();
-        }
+        inputEl.focus();
+        if (messageBuffer.length > 0 && chatState !== "waiting") scheduleChat();
       }
     }
 
@@ -665,11 +644,14 @@
       clearTimeout(batchTimer);
       batchTimer = null;
       if (inputEl.value.trim().length > 0) return;
+      if (callChatInProgress || greetInProgress) {
+        nudgeTimer = setTimeout(callNudge, 500);
+        return;
+      }
 
+      callChatInProgress = true;
+      chatState = "thinking";
       const buffered = [...messageBuffer];
-      const typingRow = makeTypingRow();
-      messagesEl.appendChild(typingRow);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
 
       try {
         const res = await fetch("/nudge", {
@@ -678,35 +660,34 @@
           body: JSON.stringify({ messages: buffered, lang: currentLang }),
         });
         const data = await res.json();
-        typingRow.remove();
-        if (messageBuffer.length > buffered.length) return;
-        messageBuffer = [];
+        if (!res.ok) throw new Error(data.error || "Something went wrong. Please try again.");
+        messageBuffer.splice(0, buffered.length);
         await waitForUserToFinish();
-        await showBlocks(data.blocks || []);
+        showBlocks(data.blocks || []);
       } catch (e) {
-        typingRow.remove();
       } finally {
-        if (chatState !== "thinking") {
-          sendBtn.disabled = false;
-          inputEl.focus();
-        }
+        callChatInProgress = false;
+        chatState = "idle";
+        inputEl.focus();
+        if (messageBuffer.length > 0) scheduleChat();
       }
     }
 
 
     function sendMessage() {
       const text = inputEl.value.trim();
-      if (!text || sendBtn.disabled) return;
+      if (!text) return;
 
       inputEl.value = "";
       addMessage(text, "user");
       messageBuffer.push(text);
+      lastMessageQueuedAt = Date.now();
+
+      if (chatState === "waiting") chatState = "idle";
 
       clearTimeout(nudgeTimer);
       nudgeTimer = null;
-
-      clearTimeout(batchTimer);
-      batchTimer = setTimeout(() => { batchTimer = null; callChat(); }, 800);
+      scheduleChat();
     }
 
     sendBtn.addEventListener("click", sendMessage);
@@ -715,15 +696,11 @@
     });
     inputEl.addEventListener("input", () => {
       lastKeystrokeAt = Date.now();
-      if (batchTimer !== null && messageBuffer.length > 0) {
-        clearTimeout(batchTimer);
-        batchTimer = setTimeout(() => { batchTimer = null; callChat(); }, 800);
-      }
     });
 
     function isUserDoneTyping() {
       const idle = Date.now() - lastKeystrokeAt;
-      if (inputEl.value.trim().length === 0) return idle > 5000;
+      if (inputEl.value.trim().length === 0) return idle > 1500;
       return idle > 35000;
     }
 
@@ -735,16 +712,18 @@
     }
 
     async function greet() {
-      sendBtn.disabled = true;
+      greetInProgress = true;
 
       try {
         const res = await fetch(`/greet?lang=${currentLang}`);
         const data = await res.json();
         addMessage(data.response, "bot");
       } catch (e) {
+      } finally {
+        greetInProgress = false;
+        inputEl.focus();
+        if (messageBuffer.length > 0) scheduleChat();
       }
-      sendBtn.disabled = false;
-      inputEl.focus();
     }
 
     // Show language picker on first load; skip if already chosen this session

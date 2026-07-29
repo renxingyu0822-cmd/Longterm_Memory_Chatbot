@@ -264,3 +264,212 @@
 - Most tracked domestic funds now show 2026-07-27 in both the latest quote and history. `027898` remains at the upstream official date 2026-07-24, and the QDII fund `012920` remains at 2026-07-24 according to its delayed publication schedule.
 - Added regression coverage for stale search metadata, fresh official NAVs, cache invalidation, and automatic daily history advancement; all 24 market tests passed.
 - Restarted one network-enabled Flask listener on port `8080` and verified the background tracker continues independently of an open browser page.
+
+---
+
+## 2026-07-29 — Project Startup
+
+**What I worked on:**
+
+- Started the chatbot and investment services requested by the user.
+- Investigated and cleared the startup failures that prevented the current chatbot code from serving its pages.
+
+**Decisions made:**
+
+- Apply the smallest possible syntax fix by moving the investment-session `global` declaration before its first use.
+- Stop only the stale chatbot process from 2026-07-27 that was still sharing port 8080, leaving the newly launched services running.
+
+**Operational outcome:**
+
+- Chatbot is running at `http://127.0.0.1:8080`; its home and memories pages both return HTTP 200.
+- Investment workspace is running at `http://127.0.0.1:8081/market` and returns HTTP 200.
+- Python compilation passed after the fix; a direct `tests.test_app` invocation was not applicable because that legacy test imports the pre-restructure `src/app.py` module.
+- On a follow-up startup request, confirmed the existing 8080 and 8081 listeners remained healthy and all three pages returned HTTP 200; no restart was needed.
+
+---
+
+## 2026-07-29 — Connect Chat Investment Entry to Asset Page
+
+**What I worked on:**
+
+- Connected the **Investments / 投资** button in the chat header to the standalone asset workspace.
+
+**Decisions made:**
+
+- Build the destination from `INVESTMENT_SERVICE_URL` instead of hard-coding a same-origin `/market` path.
+- Preserve the selected chat language as a query parameter when JavaScript updates the link.
+
+**Operational outcome:**
+
+- The rendered chat page now links to `http://127.0.0.1:8081/market` by default.
+- Restarted the chatbot and verified both the chat page and linked asset page return HTTP 200.
+- Updated the README's investment workspace URL to match the separate service port.
+
+---
+
+## 2026-07-29 — Chat Connectivity Recovery
+
+**What I worked on:**
+
+- Investigated the user's `The chat service is temporarily unavailable` error and restored the OpenAI-backed chat path.
+
+**Decisions made:**
+
+- Keep the investment service running and replace only the chatbot process.
+- Restart the chatbot with outbound network access after logs showed `WinError 10013` blocking both greeting and embedding requests.
+
+**Operational outcome:**
+
+- Replaced the restricted chatbot process on port 8080 with a network-enabled instance.
+- Verified the OpenAI-backed greeting endpoint and a complete `/chat` request, including memory retrieval, both succeeded.
+- The connectivity test stored zero memories, and its temporary conversation history was reset afterward.
+
+---
+
+## 2026-07-29 — Shorter Empty-Input Reply Delay
+
+**What I worked on:**
+
+- Changed the empty-input idle delay requested by the user from 5 seconds to 1.5 seconds.
+
+**Operational outcome:**
+
+- Normal reply display and the proactive-nudge typing check now both treat 1.5 seconds of empty-input inactivity as finished typing.
+- Verified the running chat page returns HTTP 200, includes both new 1500 ms thresholds, and no longer includes the old 5000 ms thresholds.
+
+---
+
+## 2026-07-29 — Full Service Restart
+
+**What I worked on:**
+
+- Restarted both the chatbot and investment services at the user's request.
+
+**Decisions made:**
+
+- Start both replacement processes with outbound network access so OpenAI chat and live market refreshes remain available.
+
+**Operational outcome:**
+
+- Replaced the 8080 and 8081 listeners with fresh processes.
+- Verified HTTP 200 responses from the chat home page, memories page, and asset workspace.
+- A complete OpenAI-backed `/chat` health check succeeded, saved no memories, and its temporary conversation state was reset.
+
+---
+
+## 2026-07-29 — Always-Available Send Queue
+
+**What I worked on:**
+
+- Changed chat sending so users can continue submitting messages while an earlier AI request is still running.
+
+**Decisions made:**
+
+- Render every sent user message immediately and keep the send control enabled.
+- Process AI work through one sequential background queue, batch messages sent within 800 ms, and retain the model's `WAIT` decision to merge an incomplete batch with later messages.
+- Keep messages sent during a completed `REPLY` in the next queued batch instead of mixing them into the response already generated.
+
+**Operational outcome:**
+
+- Removed request-time send-button disabling, including during the initial greeting.
+- A queue simulation confirmed two rapid user messages were immediately visible, AI concurrency stayed at one, and a `WAIT` batch merged correctly with its follow-up.
+- The rendered JavaScript passed syntax validation, and a real two-message `/chat` request succeeded without saving memories; test conversation state was reset.
+
+---
+
+## 2026-07-29 — Post-Queue Project Restart
+
+**What I worked on:**
+
+- Restarted both project services after the always-available send queue change.
+
+**Operational outcome:**
+
+- Replaced both listeners with fresh network-enabled chatbot and investment processes.
+- Verified HTTP 200 responses from the chat home page, memories page, and asset workspace, and confirmed the new queue script is loaded.
+- A complete OpenAI-backed chat request succeeded, saved zero memories, and its temporary test session was reset.
+
+---
+
+## 2026-07-29 — Direct Reply Rendering
+
+**What I worked on:**
+
+- Removed the visible typing indicator and simulated typing delays at the user's request.
+
+**Operational outcome:**
+
+- Normal chat and proactive nudge replies now insert all ready response bubbles directly.
+- Removed the English, Chinese, and German typing labels plus the unused typing-indicator styling and DOM builder.
+- Verified the running page returns HTTP 200, its JavaScript parses successfully, contains zero typing-indicator references, and uses direct reply rendering.
+
+---
+
+## 2026-07-29 — Shared Diary Reorganization
+
+**What I worked on:**
+
+- Reorganized `diary/shared.md` by date and established the same format for future entries at the user's request.
+
+**Decisions made:**
+
+- Use one date-only level-two heading per day, chronological oldest to newest, with same-day work grouped under level-three topics.
+- Merge related notes and verification results rather than creating duplicate dated sections.
+
+**Operational outcome:**
+
+- Moved the misplaced 2026-07-27 NAV entry into the existing July 27 section and consolidated all July 29 entries beneath one date.
+- Updated `AGENTS.md` so future shared diary writes must preserve chronological placement, same-day grouping, and deduplication.
+- Verified 11 unique dated sections in ascending order with no invalid date headings.
+
+---
+
+## 2026-07-29 — Collaborator-Aware Diary Routing
+
+**What I worked on:**
+
+- Implemented automatic personal-diary routing after the user identified themself as IMMFlight and the other collaborator as dafei.
+
+**Decisions made:**
+
+- Prefer explicit conversation identity, then clone-local collaborator configuration, then `git user.name`.
+- Route each operation to exactly one personal diary and keep shared implementation notes independent of collaborator identity.
+
+**Operational outcome:**
+
+- Current operations resolve to `diary/IMMFlight.md` because both the explicit identity and current Git username are `IMMFlight`.
+- A dafei session resolves to `diary/dafei.md` when its explicit, local, or Git identity is `dafei`.
+- Unknown identities now require clarification instead of being written to the wrong diary.
+
+---
+
+## 2026-07-29 — Automatic README Synchronization Rule
+
+**What I worked on:**
+
+- Added the user's requested rule to keep `README.md` synchronized with project-structure changes.
+
+**Decisions made:**
+
+- Treat file/directory moves and changes to entry points, service boundaries, module roles, startup commands, or documented paths as structure changes requiring README review.
+- Update affected documentation in the same operation, while avoiding cosmetic edits when the README is already accurate.
+
+**Operational outcome:**
+
+- Future structural changes now require an automatic README review and either a corresponding documentation update or a recorded confirmation that no README change was needed.
+
+---
+
+## 2026-07-29 — Project Restart After UI and Logging Changes
+
+**What I worked on:**
+
+- Restarted the chatbot and investment services at the user's request.
+
+**Operational outcome:**
+
+- Replaced both listeners with fresh network-enabled processes on ports 8080 and 8081.
+- Verified HTTP 200 responses from the chat home page, memories page, and asset workspace.
+- Confirmed the always-available background send queue is loaded and no typing indicator is present.
+- A complete OpenAI-backed chat request succeeded, saved zero memories, and its temporary test session was reset.
+- Reviewed the README synchronization rule; no README update was needed because the project structure did not change.

@@ -468,7 +468,11 @@ LLM Response
 - Ran `python -m unittest tests.test_market -v`; all 20 market tests passed.
 - Python compilation, frontend JavaScript syntax checks, and `git diff --check` passed.
 
-## 2026-07-27 — Explainable Investment-Habit Memory
+---
+
+## 2026-07-27
+
+### Explainable Investment-Habit Memory
 
 **Persistence and derivation:**
 
@@ -489,6 +493,24 @@ LLM Response
 - All 23 market tests passed, and the focused 27-test verification set plus Python compilation and `git diff --check` passed.
 - The full chat test module remains at its pre-existing baseline of 7 failures and 1 error caused by stale API expectations, unintended live OpenAI calls, and an outdated script-tag assertion.
 - Synchronized the existing portfolio into four active habit records, restarted the Flask service, and verified the dashboard API and Chinese memory page at `http://127.0.0.1:8080`.
+
+### Daily Official OTC-Fund NAV Updates
+
+**Provider and refresh changes:**
+
+- Replaced Eastmoney fund-search metadata as the OTC quote source with the official NAV-history API, which published the current NAV earlier while the search response remained stale.
+- Latest quotes now include the prior official NAV, allowing daily change and portfolio return calculations to update immediately.
+- Merged recent official NAV rows over the longer trend response so a delayed trend payload cannot hide the newly published date from asset history.
+- Added provider-cache invalidation for forced refreshes, shortened the fund-history cache to 30 seconds, and made normal background refreshes fetch history whenever the official quote date advances beyond the stored history date.
+- Documented the daily background behavior and `MARKET_FUND_HISTORY_CACHE_SECONDS` setting.
+
+**Verification:**
+
+- Added regression tests in which search metadata remains on 2026-07-24 while the official NAV response advances to 2026-07-27, plus service coverage for automatic history advancement and forced cache invalidation.
+- All 24 market tests, Python compilation, and `git diff --check` passed.
+- With a network-enabled local service, verified current official NAVs, daily changes, portfolio returns, and matching 2026-07-27 history rows for published domestic funds.
+
+---
 
 ## 2026-07-29
 
@@ -555,18 +577,104 @@ cd src/investment && python investment_app.py
 cd src/chatbot && python app.py
 ```
 
-## 2026-07-27 — Prompt Daily Official OTC-Fund NAV Updates
+### Chatbot Startup Syntax Fix
 
-**Provider and refresh changes:**
+**Implementation:**
 
-- Replaced Eastmoney fund-search metadata as the OTC quote source with the official NAV-history API, which published the current NAV earlier while the search response remained stale.
-- Latest quotes now include the prior official NAV, allowing daily change and portfolio return calculations to update immediately.
-- Merged recent official NAV rows over the longer trend response so a delayed trend payload cannot hide the newly published date from asset history.
-- Added provider-cache invalidation for forced refreshes, shortened the fund-history cache to 30 seconds, and made normal background refreshes fetch history whenever the official quote date advances beyond the stored history date.
-- Documented the daily background behavior and `MARKET_FUND_HISTORY_CACHE_SECONDS` setting.
+- Moved the `global _investment_session_active` declaration to the beginning of the `/chat` handler, before the handler first reads that variable.
+- This removes the Python `SyntaxError` that previously prevented `src/chatbot/app.py` from starting.
 
 **Verification:**
 
-- Added regression tests in which search metadata remains on 2026-07-24 while the official NAV response advances to 2026-07-27, plus service coverage for automatic history advancement and forced cache invalidation.
-- All 24 market tests, Python compilation, and `git diff --check` passed.
-- With a network-enabled local service, verified current official NAVs, daily changes, portfolio returns, and matching 2026-07-27 history rows for published domestic funds.
+- `python -m py_compile src/chatbot/app.py` passed.
+- Started current chatbot and investment processes and verified HTTP 200 responses from `/`, `/memories`, and `/market`.
+- Removed the stale 2026-07-27 chatbot listener so only the current chatbot process serves port 8080.
+
+### Investment Header Link
+
+**Implementation:**
+
+- The chat index route now passes an investment market URL derived from `INVESTMENT_SERVICE_URL` into the template.
+- The chat header's **Investments / 投资** link targets the standalone investment service and retains the active `lang` query parameter.
+- Corrected the README link from port 8080 to port 8081.
+
+**Verification:**
+
+- Python compilation passed.
+- After restarting the chatbot, its rendered HTML contained `http://127.0.0.1:8081/market`; requesting both the chat page and that linked page returned HTTP 200.
+
+### Empty-Input Idle Threshold
+
+**Implementation:**
+
+- Reduced both frontend empty-input idle checks from 5000 ms to 1500 ms.
+- Updated the inline timing comment to match the new 1.5-second behavior.
+
+**Verification:**
+
+- The running chat page returned HTTP 200 and served the new 1500 ms values with no remaining 5000 ms empty-input thresholds.
+
+### Sequential Background Chat Queue
+
+**Implementation:**
+
+- The send button is no longer disabled during greeting, chat, reply animation, or nudge requests.
+- Submitted messages render immediately and enter an 800 ms batching queue; unsent typing no longer delays an already submitted batch.
+- A single request mutex keeps AI tasks sequential. New messages stay queued during a `REPLY`, while an `ACTION: WAIT` batch is retained and combined with later messages.
+- Nudge requests now use the same mutex and leave newer messages queued for the next task.
+- Failed chat batches are removed cleanly so a later message cannot accidentally resend a failed batch.
+
+**Verification:**
+
+- Rendered-page JavaScript passed `node --check`, with zero remaining assignments to `sendBtn.disabled`.
+- A simulated in-flight request verified immediate rendering, one maximum concurrent AI request, and correct `WAIT` merging.
+- A real multi-message chat request completed successfully, saved zero memories, and its test session was reset.
+
+### Remove Simulated Typing UI
+
+**Implementation:**
+
+- Deleted the typing placeholder component, its CSS, and all localized “Typing…” labels.
+- Simplified `showBlocks` to append ready reply bubbles synchronously with no per-block animation delay.
+- Removed the nudge request's temporary typing row while retaining sequential background queue behavior.
+
+**Verification:**
+
+- The served page returned HTTP 200 and its inline JavaScript passed syntax validation.
+- Confirmed no typing-indicator strings or constructors remain and the rendered `showBlocks` function directly calls `addMessage`.
+
+### Shared Diary Chronology Maintenance
+
+**Implementation:**
+
+- Reordered all dated sections into ascending chronological order and normalized them to one `## YYYY-MM-DD` heading per date.
+- Moved the daily official NAV work into the existing 2026-07-27 section and converted all same-day 2026-07-29 entries into level-three topics under one date.
+- Added permanent repository instructions requiring future shared notes to follow the same chronology, grouping, and deduplication rules.
+
+**Verification:**
+
+- Confirmed all 11 dated sections are chronological, contain no duplicate dates, and use the exact date-only level-two heading format.
+
+### Collaborator-Aware Personal Diary Routing
+
+**Implementation:**
+
+- Replaced the hard-coded `diary/IMMFlight.md` logging target with active-collaborator routing rules.
+- Identity resolution now prioritizes an explicit statement in the current conversation, then a clone-local `codex.collaborator` setting, then `git user.name`.
+- Added case-insensitive mappings for `IMMFlight` and `dafei`, with exactly one personal diary written per operation and `diary/shared.md` retained for project-wide changes.
+- Unrecognized or ambiguous identities must be clarified instead of guessed; a clone-local Git setting is documented as the persistent override.
+
+**Verification:**
+
+- Confirmed the current repository's `git user.name` is `IMMFlight`, matching `diary/IMMFlight.md`; `diary/dafei.md` was not modified by this operation.
+
+### Automatic README Synchronization Rule
+
+**Implementation:**
+
+- Added a repository instruction requiring `README.md` review whenever files, directories, entry points, service boundaries, module responsibilities, startup commands, or documented paths change.
+- README structure, architecture, and run instructions must be updated in the same operation when affected; if they remain accurate, the review result must be recorded without making a cosmetic edit.
+
+**Verification:**
+
+- Confirmed the new rule is present in `AGENTS.md` and applies to future project-structure changes.

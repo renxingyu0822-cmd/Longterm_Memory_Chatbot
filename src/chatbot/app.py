@@ -103,6 +103,10 @@ app = Flask(__name__)
 client = OpenAI()
 conversation_history = []
 _investment_session_active = False  # only inject habits after user actively uses investment tools
+_investment_market_url = (
+    f"{os.getenv('INVESTMENT_SERVICE_URL', 'http://127.0.0.1:8081').rstrip('/')}"
+    "/market"
+)
 
 pruned = memory.forget()
 if pruned:
@@ -307,7 +311,7 @@ def drop_trailing_question(blocks: list[str]) -> list[str]:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", investment_market_url=_investment_market_url)
 
 
 @app.route("/memories")
@@ -463,6 +467,8 @@ def greet():
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    global _investment_session_active
+
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"error": "Request body must be a JSON object"}), 400
@@ -532,7 +538,6 @@ def chat():
         tool_calls = response.choices[0].message.tool_calls
         if not tool_calls:
             break
-        global _investment_session_active
         _investment_session_active = True
         llm_messages.append({
             "role": "assistant",

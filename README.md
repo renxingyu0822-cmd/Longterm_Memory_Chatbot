@@ -8,8 +8,9 @@ Thumper is a local-first conversational companion with persistent long-term memo
 
 ### Conversation and memory
 
-- Natural multi-message chat with an 800 ms batching window, multi-bubble replies, and a silent `WAIT` state when the user appears to be mid-thought.
+- Natural multi-message chat with an always-available send control: messages render immediately, enter a sequential background queue, share an 800 ms batch when sent close together, and merge after a silent `WAIT` when the user appears to be mid-thought.
 - Deterministic reply timing: after the model responds, the UI waits for the user to be idle before displaying the reply, without dropping messages sent during processing.
+- Ready replies are inserted directly with no “Typing…” placeholder or simulated per-bubble typing delay.
 - English, Simplified Chinese, and German chat modes, switchable during a conversation.
 - Automatic extraction of durable facts and recent events with `gpt-4o-mini`.
 - Explainable investment-habit memories derived from watchlist and portfolio actions without guessing risk tolerance from sparse data.
@@ -20,7 +21,7 @@ Thumper is a local-first conversational companion with persistent long-term memo
 
 ### Investment workspace
 
-Open `http://localhost:8080/market`, or select **Investments / 投资** in the chat header.
+Open `http://localhost:8081/market`, or select **Investments / 投资** in the chat header.
 
 - Separate views for A-shares, Hong Kong stocks, U.S. stocks, exchange-traded funds, and OTC funds.
 - Portfolio and watchlist-only views. Every held asset is also included in the watchlist.
